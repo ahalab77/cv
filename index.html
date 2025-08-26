@@ -89,22 +89,20 @@
 
     <main role="main">
       <article id="webslides">
-        <!-- FLOWER DOTS – arty intro slide -->
+       <!-- FLOWER DOTS – arty intro slide -->
 <section class="fullscreen aligncenter" id="dot-flowers">
   <style>
-    /* lokal im Slide, damit du nichts im <head> anfassen musst */
     #dot-flowers { background:#000; }
     #dot-flowers canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
     #dot-flowers .overlay { position:relative; z-index:2; mix-blend-mode:difference; color:#fff; }
-    #dot-flowers .overlay h1 { letter-spacing:.06em; }
+    #dot-flowers .overlay h1 { letter-spacing:.06em; font-size:4rem; }
   </style>
 
   <canvas></canvas>
 
-  <!-- optional: Overlay-Text (kannst du löschen) -->
+  <!-- Overlay: dein Name -->
   <div class="wrap overlay">
-    <h1 class="text-landing fadeIn">Alexander Heupel</h1>
-    <p class="fadeIn slow">filmmaker · designer · creative</p>
+    <h1 class="text-landing fadeIn">alexhatchl</h1>
   </div>
 
   <script>
@@ -124,22 +122,21 @@
 
       const W = () => canvas.width, H = () => canvas.height;
 
-      // ---- Flower model (Rose curve r = a * sin(k*θ)) ------------------------
       function rand(a,b){ return a + Math.random()*(b-a); }
 
       const flowers = [];
       function remakeFlowers() {
         flowers.length = 0;
-        const n = 3; // wie viele Blumen
+        const n = 3; // Anzahl Blumen
         for (let i=0;i<n;i++) {
           const cx = (i + 0.5) / n * W();
           const cy = H()/2 + rand(-0.05*H(), 0.05*H());
           flowers.push({
             cx, cy,
-            petals: rand(3.0, 7.0),               // k (Anzahl Blütenblätter ~)
+            petals: rand(3.0, 7.0),
             radius: Math.min(W(),H())*rand(0.22,0.33),
-            dots:   700,                           // Punkte pro Blume
-            speed:  rand(0.3,0.6),                // Öffnen/Schließen-Geschwindigkeit
+            dots:   700,
+            speed:  rand(0.3,0.6),
             phase:  rand(0, Math.PI*2)
           });
         }
@@ -148,22 +145,20 @@
 
       function drawFlower(f, t) {
         const { cx, cy, petals, radius, dots, speed, phase } = f;
-        // "Auf und zu": Amplitude atmet mit Sinus
         const amp = 0.65 + 0.35 * (0.5 + 0.5 * Math.sin(t*speed + phase));
         const rA  = radius * amp;
 
         ctx.save();
-        ctx.translate(0.5, 0.5);               // crisp dots
+        ctx.translate(0.5, 0.5);
         ctx.fillStyle = '#fff';
         const dotR = Math.max(1.0, Math.min(1.8, radius / 200)) * DPR;
 
         for (let i=0;i<dots;i++) {
-          const theta = i / dots * Math.PI * 2 * 2;     // 2 Umdrehungen
+          const theta = i / dots * Math.PI * 4; 
           const r     = Math.abs(rA * Math.sin(petals * theta));
           const x     = cx + r * Math.cos(theta);
           const y     = cy + r * Math.sin(theta);
 
-          // leicht organischer Jitter
           const jx = (Math.sin(i*12.9898 + t*0.4) * 0.5) * DPR;
           const jy = (Math.cos(i*78.233  + t*0.4) * 0.5) * DPR;
 
@@ -176,16 +171,13 @@
 
       function loop(ms){
         const t = ms/1000;
-        // Hintergrund schwarz
         ctx.fillStyle = '#000';
         ctx.fillRect(0,0,W(),H());
-        // Blumen zeichnen
         for (const f of flowers) drawFlower(f, t);
         requestAnimationFrame(loop);
       }
       requestAnimationFrame(loop);
 
-      // Robust bei Größenänderung/Slide-Wechsel
       const ro = new ResizeObserver(() => { resize(); remakeFlowers(); });
       ro.observe(section);
       document.addEventListener('ws:slide-change', () => { resize(); remakeFlowers(); });
