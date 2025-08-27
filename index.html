@@ -3,195 +3,28 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>alexhatchl — portfolio</title>
-
-  <!-- (Optional) Favicon, damit kein 404 erscheint -->
-  <link rel="icon"
-        href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23000'/%3E%3Ctext x='50%25' y='50%25' dy='.35em' text-anchor='middle' font-family='monospace' font-size='34' fill='%23fff'%3Eah%3C/text%3E%3C/svg%3E">
-
-  <!-- WebSlides CSS -->
-  <link rel="stylesheet" href="https://webslides.tv/static/css/webslides.css" />
-  <link rel="stylesheet" href="https://webslides.tv/static/css/svg-icons.css" />
-
+  <title>smoke test</title>
   <style>
-    html,body{background:#fff;}
-    /* erzwingt Höhe & Position für die Slide */
-    #pixel-rain-intro{ background:#fff; min-height:100vh; position:relative; }
-    /* Canvases über die ganze Slide spannen */
-    #pixel-rain-intro .stage{
-      position:absolute; inset:0; width:100%; height:100%;
-      display:block; image-rendering:pixelated; image-rendering:crisp-edges;
-    }
-    #pixel-rain-intro .overlay{
-      position:relative; z-index:3; height:100%;
-      display:grid; place-items:center; color:#000;
-    }
-    #pixel-rain-intro h1{ margin:0; font-size:4rem; letter-spacing:.06em; }
-    #pixel-rain-intro .loading{
-      position:absolute; bottom:24px; left:24px; color:#666; font-size:.9rem; z-index:4;
-    }
-    @media (max-width:720px){ #pixel-rain-intro h1{ font-size:2.6rem; } }
+    html,body { margin:0; height:100%; background:#fff; }
+    /* eine einzige Bühne über den ganzen Viewport */
+    canvas#stage { position:fixed; inset:0; width:100%; height:100%; display:block; }
   </style>
 </head>
 <body>
-
-<main role="main">
-  <article id="webslides">
-
-    <!-- SLIDE 1 — Pixel-Art City + Flowing Rain -->
-    <section class="fullscreen aligncenter" id="pixel-rain-intro">
-      <canvas class="stage" id="px-bg" aria-hidden="true"></canvas>
-      <canvas class="stage" id="px-rain" aria-hidden="true" style="z-index:2;"></canvas>
-      <div class="overlay"><h1>alexhatchl</h1></div>
-      <div class="loading" id="px-load">lädt…</div>
-
-      <script>
-      (function(){
-        const section = document.getElementById('pixel-rain-intro');
-        const bg = document.getElementById('px-bg');
-        const rg = document.getElementById('px-rain');
-        const bgx = bg.getContext('2d', {alpha:false});
-        const rgx = rg.getContext('2d', {alpha:true});
-        bgx.imageSmoothingEnabled = false;
-        rgx.imageSmoothingEnabled = false;
-
-        const pxload = document.getElementById('px-load');
-
-        // -------- Einstellungen --------
-        const SOURCE   = 'images/window-city.jpg?v=' + Date.now(); // dein Bild (liegt unter /cv/images/)
-        const PIX_WIDTH= 320;    // Pixelrasterbreite
-        let   levels   = 4;      // 4 Graustufen (Taste B toggelt 4 <-> 2)
-        let   showPixel= true;   // Taste P toggelt Original <-> Pixel
-        const GAMMA    = 0.9;
-        const PUNCH    = 1.25;
-
-        // Bild-Objekt
-        let img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.onload  = ()=>{ pxload.style.display='none'; render(); };
-        img.onerror = ()=>{ pxload.textContent = 'Bild nicht gefunden: ' + SOURCE; };
-        img.src = SOURCE;
-
-        // -------- Größe + sofort sichtbarer TEST --------
-        function drawTestBackground(){
-          const W=bg.width, H=bg.height;
-          bgx.fillStyle='#fff'; bgx.fillRect(0,0,W,H);
-          bgx.fillStyle='#f00'; bgx.fillRect(20,20,120,80);   // rotes Rechteck
-          bgx.fillStyle='#000'; bgx.font='24px monospace'; bgx.fillText('TEST', 30, 70);
-        }
-        function fit(){
-          const r = section.getBoundingClientRect();
-          bg.width  = Math.max(2, Math.floor(r.width));
-          bg.height = Math.max(2, Math.floor(r.height));
-          rg.width  = bg.width;
-          rg.height = bg.height;
-          drawTestBackground();                  // sofort sichtbar
-          if (img && img.complete) render();     // danach echtes Bild zeichnen
-        }
-        new ResizeObserver(fit).observe(section);
-        fit();
-
-        // -------- Pixelizer Utils --------
-        const clamp=(v,mi,ma)=>v<mi?mi:v>ma?ma:v;
-        function grayscale(id){
-          const d=id.data, g=new Uint8ClampedArray(d.length/4);
-          for(let i=0,j=0;i<d.length;i+=4,++j){ g[j]=(0.299*d[i]+0.587*d[i+1]+0.114*d[i+2])|0; }
-          return g;
-        }
-        function percentileThresholds(g, ps){
-          const hist=new Uint32Array(256); for(const v of g) hist[v]++;
-          const total=g.length; let c=0; const cum=new Uint32Array(256);
-          for(let i=0;i<256;i++){ c+=hist[i]; cum[i]=c; }
-          return ps.map(p=>{ const tgt=Math.max(0,Math.min(total-1,Math.round(p*total)));
-            let i=0; while(i<256 && cum[i]<tgt) i++; return i; });
-        }
-        function histStretch(g, pLow=0.02, pHigh=0.98){
-          const [lo,hi]=percentileThresholds(g,[pLow,pHigh]); const rng=Math.max(1,hi-lo);
-          for(let i=0;i<g.length;i++){ let v=((g[i]-lo)*255/rng); g[i]=clamp(v,0,255); }
-          return g;
-        }
-        function applyGammaAndPunch(g){
-          for(let i=0;i<g.length;i++){ let v=g[i]/255; v=Math.pow(v,GAMMA); v=(v-0.5)*PUNCH+0.5; g[i]=clamp(Math.round(v*255),0,255); }
-          return g;
-        }
-        function quantizeAdaptive(g, n){
-          if(n===2){ const [med]=percentileThresholds(g,[0.5]); const out=new Uint8ClampedArray(g.length);
-            for(let i=0;i<g.length;i++) out[i]=(g[i]<med?0:255); return out; }
-          const [p25,p50,p75]=percentileThresholds(g,[0.25,0.50,0.75]); const out=new Uint8ClampedArray(g.length);
-          for(let i=0;i<g.length;i++){ const v=g[i]; out[i]=(v<p25)?0:(v<p50)?85:(v<p75)?170:255; } return out;
-        }
-        function drawCover(ctx, src){
-          const W=ctx.canvas.width,H=ctx.canvas.height;
-          let sw,sh; if(src instanceof HTMLImageElement){ sw=src.naturalWidth; sh=src.naturalHeight; } else { sw=src.width; sh=src.height; }
-          const sR=sw/sh; let dw=W, dh=Math.round(W/sR); if(dh<H){ dh=H; dw=Math.round(H*sR); }
-          const dx=Math.round((W-dw)/2), dy=Math.round((H-dh)/2);
-          ctx.imageSmoothingEnabled=false; ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
-          ctx.drawImage(src,0,0,sw,sh,dx,dy,dw,dh);
-        }
-
-        // -------- Render --------
-        function drawPixelized(){
-          const ratio=img.height/img.width, w=PIX_WIDTH, h=Math.round(w*ratio);
-          const small=document.createElement('canvas'); small.width=w; small.height=h;
-          const sx=small.getContext('2d'); sx.imageSmoothingEnabled=false; sx.drawImage(img,0,0,w,h);
-          const id=sx.getImageData(0,0,w,h);
-          let g=grayscale(id); g=histStretch(g,0.02,0.98); g=applyGammaAndPunch(g);
-          const q=quantizeAdaptive(g,levels);
-          const d=id.data; for(let i=0,j=0;i<d.length;i+=4,++j){ const v=q[j]; d[i]=d[i+1]=d[i+2]=v; d[i+3]=255; }
-          sx.putImageData(id,0,0); drawCover(bgx, small);
-        }
-        function drawOriginal(){ drawCover(bgx, img); }
-        function render(){ showPixel ? drawPixelized() : drawOriginal(); }
-
-        // -------- Regen --------
-        function rebuildRain(){
-          COLS=Math.max(36,Math.min(120,Math.round(bg.width/18)));
-          streaks=Array.from({length:COLS},(_,i)=>({
-            xNorm:(i+Math.random()*0.5)/COLS, y:Math.random(),
-            v:0.18+Math.random()*0.32, len:0.06+Math.random()*0.22, wob:Math.random()*0.5+0.15
-          }));
-        }
-        let COLS=64, streaks=[]; rebuildRain();
-
-        let last=performance.now();
-        function loop(now){
-          const dt=Math.min(0.05,(now-last)/1000); last=now;
-          const W=rg.width,H=rg.height; rgx.clearRect(0,0,W,H); rgx.fillStyle='#000';
-          for(const s of streaks){
-            const x=Math.round(s.xNorm*W + Math.sin(now*0.0009+s.xNorm*10)*s.wob*6);
-            const y=s.y*H, L=Math.round(s.len*H);
-            for(let k=0;k<L;k+=2){
-              const yy=(y+k)|0;
-              if(yy>=0 && yy<H){
-                rgx.fillRect(x,yy,1,1);
-                if((k%6)===0){ if(x+1<W)rgx.fillRect(x+1,yy,1,1); if(x-1>=0)rgx.fillRect(x-1,yy,1,1); }
-              }
-            }
-            rgx.fillRect(x-1,(y+L+1)|0,3,2);
-            s.y+=s.v*dt;
-            if(s.y*H>H+12){ s.y=-Math.random()*0.2; s.len=0.06+Math.random()*0.22; s.v=0.18+Math.random()*0.32; }
-          }
-          requestAnimationFrame(loop);
-        }
-        requestAnimationFrame(loop);
-
-        // -------- Events --------
-        window.addEventListener('resize', ()=>{ fit(); rebuildRain(); }, {passive:true});
-        window.addEventListener('keydown', (e)=>{
-          const k=e.key.toLowerCase();
-          if(k==='p'){ showPixel=!showPixel; render(); }
-          if(k==='b'){ levels = (levels===4?2:4); render(); }
-        });
-      })();
-      </script>
-    </section>
-
-  </article>
-</main>
-
-<!-- WebSlides JS -->
-<script src="https://webslides.tv/static/js/webslides.js"></script>
-<script>window.ws = new WebSlides();</script>
-<script defer src="https://webslides.tv/static/js/svg-icons.js"></script>
+  <canvas id="stage"></canvas>
+  <script>
+    const c = document.getElementById('stage');
+    const x = c.getContext('2d', {alpha:false});
+    function fit(){
+      c.width = innerWidth;
+      c.height = innerHeight;
+      x.fillStyle = '#fff'; x.fillRect(0,0,c.width,c.height);
+      x.fillStyle = '#f00'; x.fillRect(20,20,120,80);
+      x.fillStyle = '#000'; x.font = '24px monospace'; x.fillText('TEST', 30, 70);
+      console.log('canvas size', c.width, c.height);
+    }
+    addEventListener('resize', fit, {passive:true});
+    fit();
+  </script>
 </body>
 </html>
