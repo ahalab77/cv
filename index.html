@@ -10,48 +10,38 @@
 <body>
 <main role="main">
   <article id="webslides">
-  <!-- 80s CAR · B/W PIXEL ART · RAIN + CINEMATIC LIGHT (original artwork, not a copy) -->
-<section class="fullscreen aligncenter" id="parking-homage">
+ <!-- B/W PIXEL-ART: WINDOW RAIN WITH BLURRY CITY -->
+<section class="fullscreen aligncenter" id="bw-rain-window">
   <style>
-    #parking-homage { background:#fff; }
-    #parking-homage canvas{
+    #bw-rain-window { background:#fff; }
+    #bw-rain-window canvas{
       position:absolute; inset:0; width:100%; height:100%;
-      image-rendering: pixelated; image-rendering: crisp-edges; display:block;
-      pointer-events:none;
-    }
-    #parking-homage .overlay {
-      position:relative; z-index:2; color:#000;
-      display:grid; place-items:center; height:100%;
-    }
-    #parking-homage .overlay h1{
-      font-size:4rem; letter-spacing:.06em; margin:0;
-    }
-    @media (max-width: 680px){
-      #parking-homage .overlay h1{ font-size:2.6rem; }
+      display:block; pointer-events:none;
+      image-rendering: pixelated; image-rendering: crisp-edges;
     }
   </style>
-
   <canvas></canvas>
-  <div class="overlay"><h1>alexhatchl</h1></div>
 
   <script>
   (function(){
-    const section = document.getElementById('parking-homage');
+    const section = document.getElementById('bw-rain-window');
     const cvs = section.querySelector('canvas');
     const ctx = cvs.getContext('2d', { alpha:false });
     ctx.imageSmoothingEnabled = false;
 
-    // Low-res Arbeitsfläche (wird via CSS hochskaliert)
+    // Low-res Arbeitsfläche (wird via CSS groß skaliert)
     const W = 192, H = 108; // 16:9
     cvs.width = W; cvs.height = H;
 
     // ---------- Helpers ----------
-    function dot(x,y){ ctx.fillRect(x|0,y|0,1,1); }
+    function dot(x,y){ ctx.fillRect(x|0, y|0, 1, 1); }
     function rect(x,y,w,h,c='#000'){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,w|0,h|0); }
-    // Dithering: level 0=weiß ... 5=nahe schwarz (mehr Punkte)
+
+    // Dithering: level 0..5 (0=weiß → kaum Punkte, 5=dunkel → viele Punkte)
     function ditherRect(x,y,w,h,level=2,phase=0){
-      const lut = [ -1,0,1,2,3,4,5,6 ];
-      const thr = lut[level<0?0:level>7?7:level];
+      const clamp = (n,min,max)=>Math.max(min,Math.min(max,n|0));
+      level = clamp(level,0,7);
+      const thr = [-1,0,1,2,3,4,5,6][level]; // 8x8 Bayer-artiges Raster
       for(let j=0;j<h;j++){
         for(let i=0;i<w;i++){
           const m = (i + j + phase) & 7; // 0..7
@@ -59,148 +49,114 @@
         }
       }
     }
-    function line(x1,y1,x2,y2){
-      let dx=Math.abs(x2-x1), sx=x1<x2?1:-1;
-      let dy=-Math.abs(y2-y1), sy=y1<y2?1:-1;
-      let err=dx+dy, e2;
-      while(true){
-        dot(x1,y1);
-        if(x1===x2 && y1===y2) break;
-        e2 = 2*err;
-        if(e2>=dy){ err+=dy; x1+=sx; }
-        if(e2<=dx){ err+=dx; y1+=sy; }
+
+    // ---------- Stadt (verschwommen angedeutet) ----------
+    const farLayer = [], nearLayer = [];
+    function buildCity(){
+      farLayer.length = 0; nearLayer.length = 0;
+      // Ferne Silhouetten (helles Dither)
+      let x = 0;
+      while(x < W){
+        const bw = 8 + (Math.random()*10|0);
+        const bh = 20 + (Math.random()*30|0);
+        farLayer.push({x, y:H-40-bh, w:bw, h:bh});
+        x += bw + (Math.random()*4|0);
+      }
+      // Nahe Silhouetten (dunkler)
+      x = 0;
+      while(x < W){
+        const bw = 10 + (Math.random()*14|0);
+        const bh = 18 + (Math.random()*34|0);
+        nearLayer.push({x, y:H-30-bh, w:bw, h:bh});
+        x += bw + (Math.random()*6|0);
       }
     }
+    buildCity();
 
-    // ---------- Regen ----------
-    const RAIN_NEAR = 160, RAIN_FAR = 120;
-    const rainNear = Array.from({length:RAIN_NEAR}, () => ({
-      x: Math.random()*W, y: Math.random()*H, v: 1.0 + Math.random()*0.8
-    }));
-    const rainFar = Array.from({length:RAIN_FAR}, () => ({
-      x: Math.random()*W, y: Math.random()*H, v: 0.4 + Math.random()*0.5
-    }));
+    function drawCity(t){
+      // „Nebel“/Himmel leicht gedithert
+      ditherRect(0, 0, W, 48, 0, (t/120|0)%8);
 
-    function drawRainLayer(arr, len, drift){
+      // Ferne Gebäude (weiches Dither + minimale Unschärfe via 2. Overlay)
+      for(const b of farLayer){
+        ditherRect(b.x, b.y, b.w, b.h, 1, (t/90|0)%8);
+        ditherRect(b.x+1, b.y+1, b.w, b.h, 0, (t/120|0+2)%8);
+      }
+      // Nahe Gebäude
+      for(const b of nearLayer){
+        ditherRect(b.x, b.y, b.w, b.h, 3, (t/70|0)%8);
+      }
+
+      // Horizont / Boden leicht andeuten
+      ditherRect(0, H-26, W, 4, 1, (t/60|0)%8);
+    }
+
+    // ---------- Regen auf der Scheibe (vertikale Läufer + Tropfen) ----------
+    const COLS = 48;              // Anzahl „Glaskolonnen“
+    const streaks = [];
+    for(let i=0;i<COLS;i++){
+      streaks.push({
+        x: ((i + Math.random()*0.5) / COLS) * W,
+        y: Math.random()*H,
+        v: 0.4 + Math.random()*0.8, // Geschwindigkeit
+        len: 6 + (Math.random()*16|0), // Länge des Läufers
+        wob: Math.random()*0.6 + 0.2   // seitliches Wabern
+      });
+    }
+
+    function drawRain(t){
+      // Mikro-Kondenswasser („Fogged glass“) — sehr feines Dither vorne
+      ditherRect(0, 0, W, H, 0, (t/40|0)%8);
+
+      // Läufer + Tropfen (schwarze 1px-„Tinte“ auf weißem Glas)
       ctx.fillStyle = '#000';
-      for(const r of arr){
-        line(r.x|0, r.y|0, (r.x+len+drift)|0, (r.y+len*1.6)|0);
-        r.x += drift*0.25; r.y += r.v;
-        if(r.y > H+4){ r.y = -4; r.x = Math.random()*W; }
-        if(r.x > W+4){ r.x = -4; }
-      }
-    }
+      for(const s of streaks){
+        // leichtes seitliches Wabern
+        const drift = Math.sin((t*0.002) + s.x*0.1) * s.wob;
+        // Hauptstrich
+        for(let k=0;k<s.len;k++){
+          const yy = (s.y + k) % (H+8);
+          const xx = Math.max(0, Math.min(W-1, s.x + drift));
+          dot(xx|0, yy|0);
+          // kleine Schatten rechts/links (schwächer, per Dither simuliert)
+          if(k % 3 === 0){
+            if(xx+1 < W) ditherRect((xx+1)|0, yy|0, 1, 1, 1, k&7);
+            if(xx-1 >=0) ditherRect((xx-1)|0, yy|0, 1, 1, 1, (k+4)&7);
+          }
+        }
+        // Kopf-Tropfen (dicker Punkt)
+        rect((s.x+drift-1)|0, (s.y+s.len)|0, 3, 2, '#000');
 
-    // ---------- Boden / Pfützen ----------
-    function drawGround(t){
-      // Pfützen-Schimmer (leichtes Dither)
-      ditherRect(0, 78, W, 3, 1, (t/70|0)%8);
-      ditherRect(0, 81, W, 2, 2, (t/60|0)%8);
-      // vage Parkplatz-Markierungen
-      for(let x=8;x<W;x+=18){ dot(x, 86); dot(x+1, 86); }
-    }
-
-    // ---------- Cine-Licht (Kegelflächen als Dither) ----------
-    function headlightCone(cx, cy, angleRad, length, spread){
-      for(let i=0;i<length;i+=2){
-        const w = (i/length)*spread;
-        const dx = Math.cos(angleRad)*i;
-        const dy = Math.sin(angleRad)*i;
-        const x = cx + dx - w/2;
-        const y = cy + dy - w/2;
-        // nach vorn heller (weniger Punkte)
-        const lvl = Math.max(0, 3 - (i/length)*3); // 0..3
-        ditherRect(x, y, w, w, lvl, (i>>1)&7);
-      }
-    }
-
-    // ---------- Auto (80s Coupé/Keil) ----------
-    function drawCar(t){
-      const cx = W/2, cy = 72;
-
-      // Karosserie Grundkörper (dunkel)
-      ditherRect(cx-36, cy-10, 72, 16, 4, (t/50|0)%8);
-
-      // Keil-Haube (etwas heller)
-      ditherRect(cx-36, cy-12, 32, 6, 3, (t/45|0)%8);
-
-      // Dachlinie + Heckstufe
-      rect(cx-22, cy-16, 34, 6);         // Dach
-      rect(cx+12, cy-10, 12, 4);         // Heckkante
-
-      // Fensterband
-      rect(cx-16, cy-15, 22, 5);
-      rect(cx+7,  cy-12, 8, 3);
-
-      // Stoßfänger
-      rect(cx-38, cy+2, 16, 2);          // Front
-      rect(cx+24, cy+2, 12, 2);          // Heck
-
-      // Räder (dichtes Dither)
-      ditherRect(cx-26, cy+4, 10, 4, 5);
-      ditherRect(cx+12, cy+4, 10, 4, 5);
-
-      // Scheinwerfer (schwarze Linsen)
-      rect(cx-37, cy-4, 2, 2);
-      rect(cx-34, cy-4, 1, 2);
-
-      // Cine-Licht: zwei Kegel nach rechts unten
-      headlightCone(cx-33, cy-3, Math.PI*1.98, 64, 24);
-      headlightCone(cx-32, cy-3, Math.PI*2.03, 64, 20);
-
-      // Karosserie-Reflexe
-      line(cx-18, cy-8, cx+8, cy-9);
-      line(cx-10, cy-2, cx+14, cy-3);
-
-      // kleine Details
-      rect(cx-6, cy-12, 2, 1);  // Spiegel
-      rect(cx-29, cy-10, 2, 1); // Antenne/Blechkante angedeutet
-    }
-
-    // ---------- Spiegelung im nassen Boden ----------
-    function drawReflection(t){
-      const y0 = 78;
-      ditherRect(W/2-30, y0+2, 60, 6, 1, (t/70|0)%8);
-      for(let i=0;i<5;i++){
-        const y = y0 + 3 + i*2 + Math.sin((t*0.002)+i)*0.6;
-        for(let x=W/2-30; x<W/2+30; x+=3){
-          if(((x + i) & 3) === 0) dot(x, y);
+        // Bewegung aktualisieren
+        s.y += s.v;
+        if(s.y > H+12){
+          s.y = -Math.random()*40;          // neu von oben
+          s.len = 6 + (Math.random()*16|0); // neue Länge
+          s.v = 0.4 + Math.random()*0.8;    // neue Geschwindigkeit
         }
       }
     }
 
-    // ---------- Frame-Loop ----------
+    // ---------- Frame Loop ----------
     function frame(t){
-      // Weißer Grund
+      // Weißes Glas „reinigen“
       ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
 
-      // Ferne „Häuser“ als sehr leichte Dither-Blöcke (Atmosphäre)
-      for(let i=0;i<10;i++){
-        const bx = i*20 + (i%2?6:0);
-        const bw = 14 + (i%3)*6;
-        const bh = 18 + (i%4)*7;
-        ditherRect(bx, 20 + (i%2)*3, bw, bh, 1, (i+t/120|0)%8);
-      }
-
-      drawGround(t);
-      drawCar(t);
-      drawReflection(t);
-
-      // Regen – erst weit (dünner, langsamer), dann nah (dicker, schneller)
-      drawRainLayer(rainFar, 1, 0.6);
-      drawRainLayer(rainNear, 2, 1.2);
+      drawCity(t);
+      drawRain(t);
 
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
 
-    // Robustheit (Canvas bleibt Low-Res; CSS skaliert)
+    // Robust bei Größenwechsel (Canvas bleibt Low-Res; CSS skaliert)
     const ro = new ResizeObserver(()=>{ /* no-op */ });
     ro.observe(section);
     document.addEventListener('ws:slide-change', ()=>{ /* no-op */ });
   })();
   </script>
 </section>
+
 
 
   </article>
