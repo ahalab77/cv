@@ -45,7 +45,7 @@
 
     const PIX_WIDTH = 320, CONTRAST = 0.95;
     const PALETTE = [0,85,170,255];
-    const SOURCE = 'images/window-city.jpg';
+    const SOURCE = 'images/window-city.jpg?v=' + Date.now();
 
     function clamp(v, mi, ma) { return v<mi?mi:v>ma?ma:v; }
     function contrast(v, c) { return clamp((v-128)*c+128, 0, 255); }
@@ -108,7 +108,7 @@
     function rainFrame(t){
       const W = rg.width, H = rg.height;
       rgx.clearRect(0,0,W,H);
-      rgx.globalAlpha=0.06; rgx.fillStyle='#000'; rgx.fillRect(0,0,W,H); rgx.globalAlpha=1;
+      rgx.globalAlpha = 0.06; rgx.fillStyle='#000'; rgx.fillRect(0,0,W,H); rgx.globalAlpha=1;
       rgx.fillStyle='#000';
       streaks.forEach(s=>{
         const x = Math.round(s.xNorm*W + Math.sin(t*0.0009 + s.xNorm*10)*s.wob*6);
