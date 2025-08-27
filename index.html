@@ -42,42 +42,43 @@
       <div class="loading" id="px-load">lädt…</div>
 
       <script>
-      (function(){
-        const section = document.getElementById('pixel-rain-intro');
-        const bg = document.getElementById('px-bg');
-        const rg = document.getElementById('px-rain');
-        const bgx = bg.getContext('2d', {alpha:false});
-        const rgx = rg.getContext('2d', {alpha:true});
-        bgx.imageSmoothingEnabled = false;
-        rgx.imageSmoothingEnabled = false;
+(function(){
+  const section = document.getElementById('pixel-rain-intro');
+  const bg = document.getElementById('px-bg');
+  const rg = document.getElementById('px-rain');
+  const bgx = bg.getContext('2d', {alpha:false});
+  const rgx = rg.getContext('2d', {alpha:true});
+  bgx.imageSmoothingEnabled = false;
+  rgx.imageSmoothingEnabled = false;
 
-        const pxload = document.getElementById('px-load');
+  const pxload = document.getElementById('px-load');
 
-        // ---- Bild-Objekt existiert IMMER im Scope (wird später befüllt)
-        let img = null;
-        const SOURCE = 'images/window-city.jpg?v=' + Date.now();
+  // Fester Test-Hintergrund: Falls du den siehst, sind Canvas & Layout ok
+  function drawTestBackground() {
+    const W = bg.width, H = bg.height;
+    bgx.fillStyle = '#fff';
+    bgx.fillRect(0,0,W,H);
+    bgx.fillStyle = '#f00';
+    bgx.fillRect(20,20,120,80);           // rotes Rechteck
+    bgx.fillStyle = '#000';
+    bgx.font = '24px monospace';
+    bgx.fillText('TEST', 30, 70);         // Schrift
+  }
 
-        // Einstellungen
-        const PIX_WIDTH = 320;
-        let   levels    = 4;      // 4 Graustufen (B toggelt 4<->2)
-        let   showPixel = true;   // P toggelt Original<->Pixel
-        const GAMMA = 0.9;
-        const PUNCH = 1.25;
+  // --- WICHTIG: Größe setzen & SOFORT etwas malen
+  function fit(){
+    const r = section.getBoundingClientRect();
+    bg.width  = Math.max(2, Math.floor(r.width));
+    bg.height = Math.max(2, Math.floor(r.height));
+    rg.width  = bg.width;
+    rg.height = bg.height;
+    drawTestBackground();                 // <— jetzt musst du sofort was sehen
+  }
+  new ResizeObserver(fit).observe(section);
+  fit();
 
-        // Größe setzen (sicher, auch wenn img noch null ist)
-        function fit(){
-          const r = section.getBoundingClientRect();
-          bg.width  = Math.max(2, Math.floor(r.width));
-          bg.height = Math.max(2, Math.floor(r.height));
-          rg.width  = bg.width;
-          rg.height = bg.height;
-          bgx.fillStyle = '#fff';
-          bgx.fillRect(0,0,bg.width,bg.height);
-          if (img && img.complete) render();
-        }
-        const ro = new ResizeObserver(fit);
-        ro.observe(section);
-        fit();
+  // … (restlicher Code bleibt unterhalb; Pixelizer + Regen etc.)
+
 
         // Bild ERST JETZT erzeugen & laden
         img = new Image();
