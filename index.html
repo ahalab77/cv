@@ -10,9 +10,7 @@
   <link rel="stylesheet" href="https://webslides.tv/static/css/svg-icons.css" />
 
   <style>
-    /* optional: saubere Basis */
     html,body{background:#fff;}
-    /* Slide Styles */
     #pixel-rain-intro .stage{
       position:absolute; inset:0; width:100%; height:100%;
       display:block; image-rendering:pixelated; image-rendering:crisp-edges;
@@ -21,15 +19,11 @@
       position:relative; z-index:3; height:100%;
       display:grid; place-items:center; color:#000;
     }
-    #pixel-rain-intro h1{
-      margin:0; font-size:4rem; letter-spacing:.06em;
-    }
+    #pixel-rain-intro h1{ margin:0; font-size:4rem; letter-spacing:.06em; }
     #pixel-rain-intro .loading{
       position:absolute; bottom:24px; left:24px; color:#666; font-size:.9rem; z-index:4;
     }
-    @media (max-width:720px){
-      #pixel-rain-intro h1{ font-size:2.6rem; }
-    }
+    @media (max-width:720px){ #pixel-rain-intro h1{ font-size:2.6rem; } }
   </style>
 </head>
 <body>
@@ -56,20 +50,18 @@
 
         const pxload = document.getElementById('px-load');
 
-        // Bild zuerst anlegen (wichtig für Reihenfolge)
-        const SOURCE = 'images/window-city.jpg?v=' + Date.now(); // Cache-Buster
-        const img = new Image();
-        img.crossOrigin = 'anonymous';
-        img.src = SOURCE;
+        // ---- Bild-Objekt existiert IMMER im Scope (wird später befüllt)
+        let img = null;
+        const SOURCE = 'images/window-city.jpg?v=' + Date.now();
 
         // Einstellungen
-        const PIX_WIDTH = 320;     // Pixelrasterbreite
-        let levels = 4;            // 4 Graustufen (Taste B toggelt 4 <-> 2)
-        let showPixel = true;      // Taste P toggelt Original <-> Pixel
-        const GAMMA = 0.9;         // <1 hebt Schatten, >1 hebt Lichter
-        const PUNCH = 1.25;        // Kontrast-Multiplikator
+        const PIX_WIDTH = 320;
+        let   levels    = 4;      // 4 Graustufen (B toggelt 4<->2)
+        let   showPixel = true;   // P toggelt Original<->Pixel
+        const GAMMA = 0.9;
+        const PUNCH = 1.25;
 
-        // Größe setzen
+        // Größe setzen (sicher, auch wenn img noch null ist)
         function fit(){
           const r = section.getBoundingClientRect();
           bg.width  = Math.max(2, Math.floor(r.width));
@@ -78,13 +70,18 @@
           rg.height = bg.height;
           bgx.fillStyle = '#fff';
           bgx.fillRect(0,0,bg.width,bg.height);
-          if (img.complete) render();
+          if (img && img.complete) render();
         }
-        new ResizeObserver(fit).observe(section);
+        const ro = new ResizeObserver(fit);
+        ro.observe(section);
         fit();
 
+        // Bild ERST JETZT erzeugen & laden
+        img = new Image();
+        img.crossOrigin = 'anonymous';
         img.onload  = ()=>{ pxload.style.display='none'; render(); };
         img.onerror = ()=>{ pxload.textContent = 'Bild nicht gefunden: ' + SOURCE; };
+        img.src = SOURCE;
 
         // ---------- Utils ----------
         const clamp=(v,mi,ma)=>v<mi?mi:v>ma?ma:v;
