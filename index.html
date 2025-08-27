@@ -10,154 +10,179 @@
 <body>
 <main role="main">
   <article id="webslides">
- <!-- B/W PIXEL-ART: WINDOW RAIN WITH BLURRY CITY -->
-<section class="fullscreen aligncenter" id="bw-rain-window">
+<!-- SLIDE 1 — Pixel-Art City behind Glass + Flowing Rain -->
+<section class="fullscreen aligncenter" id="pixel-rain-intro">
   <style>
-    #bw-rain-window { background:#fff; }
-    #bw-rain-window canvas{
-      position:absolute; inset:0; width:100%; height:100%;
-      display:block; pointer-events:none;
+    #pixel-rain-intro { background:#111; }
+    #pixel-rain-intro .stage {
+      position:absolute; inset:0; display:block; width:100%; height:100%;
       image-rendering: pixelated; image-rendering: crisp-edges;
     }
+    #pixel-rain-intro .overlay {
+      position:relative; z-index:3; height:100%;
+      display:grid; place-items:center; color:#fff; mix-blend-mode:screen;
+    }
+    #pixel-rain-intro h1 { margin:0; font-size:4rem; letter-spacing:.06em; }
+    @media (max-width: 720px){ #pixel-rain-intro h1 { font-size:2.6rem; } }
   </style>
-  <canvas></canvas>
+
+  <!-- zwei Canvas: unten Pixel-Bild, oben Regen -->
+  <canvas class="stage" id="px-bg" aria-hidden="true"></canvas>
+  <canvas class="stage" id="px-rain" aria-hidden="true" style="z-index:2;"></canvas>
+
+  <!-- Name -->
+  <div class="overlay"><h1>alexhatchl</h1></div>
 
   <script>
   (function(){
-    const section = document.getElementById('bw-rain-window');
-    const cvs = section.querySelector('canvas');
-    const ctx = cvs.getContext('2d', { alpha:false });
-    ctx.imageSmoothingEnabled = false;
+    const section = document.getElementById('pixel-rain-intro');
+    const bg = document.getElementById('px-bg');
+    const rg = document.getElementById('px-rain');
+    const bgx = bg.getContext('2d', {alpha:false});
+    const rgx = rg.getContext('2d', {alpha:true});
+    bgx.imageSmoothingEnabled = false;
+    rgx.imageSmoothingEnabled = false;
 
-    // Low-res Arbeitsfläche (wird via CSS groß skaliert)
-    const W = 192, H = 108; // 16:9
-    cvs.width = W; cvs.height = H;
+    // === deine Pixelizer-Settings (wie im Screenshot) ===
+    const PIX_WIDTH = 320;      // Breite des Pixelrasters
+    const CONTRAST  = 0.95;     // 0.95
+    const PALETTE   = [0,85,170,255]; // 4 Graustufen, kein Dither
+    const SOURCE    = 'images/window-city.jpg'; // <-- DEIN Bild hier ablegen
 
-    // ---------- Helpers ----------
-    function dot(x,y){ ctx.fillRect(x|0, y|0, 1, 1); }
-    function rect(x,y,w,h,c='#000'){ ctx.fillStyle=c; ctx.fillRect(x|0,y|0,w|0,h|0); }
-
-    // Dithering: level 0..5 (0=weiß → kaum Punkte, 5=dunkel → viele Punkte)
-    function ditherRect(x,y,w,h,level=2,phase=0){
-      const clamp = (n,min,max)=>Math.max(min,Math.min(max,n|0));
-      level = clamp(level,0,7);
-      const thr = [-1,0,1,2,3,4,5,6][level]; // 8x8 Bayer-artiges Raster
-      for(let j=0;j<h;j++){
-        for(let i=0;i<w;i++){
-          const m = (i + j + phase) & 7; // 0..7
-          if(m <= thr) dot(x+i, y+j);
-        }
+    // Hilfen
+    const clamp = (v,mi,ma)=>v<mi?mi:v>ma?ma:v;
+    const contrast = (v,c)=> clamp((v-128)*c + 128, 0, 255);
+    const nearest4 = (g)=> {
+      // g ist 0..255; mappe auf 4 Level ohne Dither
+      let best = 0, bd = 1e9;
+      for (let i=0;i<PALETTE.length;i++){
+        const d = Math.abs(g - PALETTE[i]);
+        if (d < bd) { bd = d; best = PALETTE[i]; }
       }
+      return best;
+    };
+
+    // responsive Größe
+    function fitCanvases(){
+      const r = section.getBoundingClientRect();
+      bg.width = rg.width = Math.max(2, Math.floor(r.width));
+      bg.height= rg.height= Math.max(2, Math.floor(r.height));
+    }
+    new ResizeObserver(fitCanvases).observe(section);
+    fitCanvases();
+
+    // Bild laden und in Pixel-Art wandeln
+    const img = new Image();
+    img.onload = renderPixelBackground;
+    img.crossOrigin = 'anonymous';
+    img.src = SOURCE;
+
+    function renderPixelBackground(){
+      // auf Pixelbreite runterskalieren (Nearest)
+      const ratio = img.height / img.width;
+      const w = PIX_WIDTH;
+      const h = Math.round(w * ratio);
+      const small = document.createElement('canvas');
+      small.width = w; small.height = h;
+      const sx = small.getContext('2d');
+      sx.imageSmoothingEnabled = false;
+      sx.drawImage(img, 0, 0, w, h);
+
+      // zu Graustufen + Kontrast + Quantisierung (4 Level)
+      const id = sx.getImageData(0,0,w,h);
+      const d = id.data;
+      for (let i=0;i<d.length;i+=4){
+        // Luma (BT.601) → Grauwert
+        let g = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
+        g = contrast(g, CONTRAST);
+        const q = nearest4(g);
+        d[i]=d[i+1]=d[i+2]=q; d[i+3]=255;
+      }
+      sx.putImageData(id,0,0);
+
+      // groß auf bg zeichnen (Nearest), zentriert/crop wie cover
+      drawCover(bgx, small);
     }
 
-    // ---------- Stadt (verschwommen angedeutet) ----------
-    const farLayer = [], nearLayer = [];
-    function buildCity(){
-      farLayer.length = 0; nearLayer.length = 0;
-      // Ferne Silhouetten (helles Dither)
-      let x = 0;
-      while(x < W){
-        const bw = 8 + (Math.random()*10|0);
-        const bh = 20 + (Math.random()*30|0);
-        farLayer.push({x, y:H-40-bh, w:bw, h:bh});
-        x += bw + (Math.random()*4|0);
-      }
-      // Nahe Silhouetten (dunkler)
-      x = 0;
-      while(x < W){
-        const bw = 10 + (Math.random()*14|0);
-        const bh = 18 + (Math.random()*34|0);
-        nearLayer.push({x, y:H-30-bh, w:bw, h:bh});
-        x += bw + (Math.random()*6|0);
-      }
-    }
-    buildCity();
+    function drawCover(ctx, sourceCanvas){
+      const W = ctx.canvas.width, H = ctx.canvas.height;
+      const sw = sourceCanvas.width, sh = sourceCanvas.height;
+      const sRatio = sw/sh, tRatio = W/H;
+      let dw = W, dh = Math.round(W / sRatio);
+      if (dh < H){ dh = H; dw = Math.round(H * sRatio); }
+      const dx = Math.round((W - dw)/2), dy = Math.round((H - dh)/2);
 
-    function drawCity(t){
-      // „Nebel“/Himmel leicht gedithert
-      ditherRect(0, 0, W, 48, 0, (t/120|0)%8);
-
-      // Ferne Gebäude (weiches Dither + minimale Unschärfe via 2. Overlay)
-      for(const b of farLayer){
-        ditherRect(b.x, b.y, b.w, b.h, 1, (t/90|0)%8);
-        ditherRect(b.x+1, b.y+1, b.w, b.h, 0, (t/120|0+2)%8);
-      }
-      // Nahe Gebäude
-      for(const b of nearLayer){
-        ditherRect(b.x, b.y, b.w, b.h, 3, (t/70|0)%8);
-      }
-
-      // Horizont / Boden leicht andeuten
-      ditherRect(0, H-26, W, 4, 1, (t/60|0)%8);
+      ctx.imageSmoothingEnabled = false;
+      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H); // weißer Rand falls nötig
+      ctx.drawImage(sourceCanvas, 0,0, sw,sh, dx,dy, dw,dh);
     }
 
-    // ---------- Regen auf der Scheibe (vertikale Läufer + Tropfen) ----------
-    const COLS = 48;              // Anzahl „Glaskolonnen“
-    const streaks = [];
-    for(let i=0;i<COLS;i++){
-      streaks.push({
-        x: ((i + Math.random()*0.5) / COLS) * W,
-        y: Math.random()*H,
-        v: 0.4 + Math.random()*0.8, // Geschwindigkeit
-        len: 6 + (Math.random()*16|0), // Länge des Läufers
-        wob: Math.random()*0.6 + 0.2   // seitliches Wabern
-      });
-    }
+    // === REGEN: Läufer + Tropfen, die „am Glas“ nach unten fließen ===
+    const COLS = 64; // Anzahl Säulen (mehr -> dichter)
+    const streaks = Array.from({length:COLS}, (_,i)=> ({
+      // Position wird dynamisch anhand der Canvasbreite gesetzt
+      xNorm: (i + Math.random()*0.5) / COLS, // 0..1
+      y: Math.random(),         // 0..1 (relativ)
+      v: 0.08 + Math.random()*0.22, // Geschwindigkeit relativ zur Höhe
+      len: 0.05 + Math.random()*0.18, // Länge relativ
+      wob: Math.random()*0.5 + 0.15,  // seitliches Wabern
+    }));
 
-    function drawRain(t){
-      // Mikro-Kondenswasser („Fogged glass“) — sehr feines Dither vorne
-      ditherRect(0, 0, W, H, 0, (t/40|0)%8);
+    function rainFrame(t){
+      const W = rg.width, H = rg.height;
+      rgx.clearRect(0,0,W,H);
 
-      // Läufer + Tropfen (schwarze 1px-„Tinte“ auf weißem Glas)
-      ctx.fillStyle = '#000';
-      for(const s of streaks){
-        // leichtes seitliches Wabern
-        const drift = Math.sin((t*0.002) + s.x*0.1) * s.wob;
-        // Hauptstrich
-        for(let k=0;k<s.len;k++){
-          const yy = (s.y + k) % (H+8);
-          const xx = Math.max(0, Math.min(W-1, s.x + drift));
-          dot(xx|0, yy|0);
-          // kleine Schatten rechts/links (schwächer, per Dither simuliert)
-          if(k % 3 === 0){
-            if(xx+1 < W) ditherRect((xx+1)|0, yy|0, 1, 1, 1, k&7);
-            if(xx-1 >=0) ditherRect((xx-1)|0, yy|0, 1, 1, 1, (k+4)&7);
+      // dünner „Fog“ auf Glas (ganz dezent)
+      rgx.globalAlpha = 0.06;
+      rgx.fillStyle = '#000'; rgx.fillRect(0,0,W,H);
+      rgx.globalAlpha = 1;
+
+      // Läufer & Tropfen zeichnen
+      rgx.fillStyle = '#000';
+      for (const s of streaks){
+        const x = Math.round(s.xNorm * W + Math.sin(t*0.0009 + s.xNorm*10)*s.wob*6);
+        const y = s.y * H;
+        const L = Math.round(s.len * H);
+
+        // Hauptlauf (vertikale Spur)
+        for (let k=0;k<L;k+=2){
+          const yy = Math.round(y + k);
+          if (yy >= 0 && yy < H) rgx.fillRect(x, yy, 1, 1);
+          // leichte Schattenkante links/rechts (Pixel „feucht“)
+          if ((k % 6)===0){
+            if (x+1 < W) rgx.fillRect(x+1, yy, 1, 1);
+            if (x-1 >=0) rgx.fillRect(x-1, yy, 1, 1);
           }
         }
-        // Kopf-Tropfen (dicker Punkt)
-        rect((s.x+drift-1)|0, (s.y+s.len)|0, 3, 2, '#000');
+        // Tropfenkopf etwas dicker
+        const ty = Math.round(y + L + 1);
+        rgx.fillRect(x-1, ty, 3, 2);
 
-        // Bewegung aktualisieren
-        s.y += s.v;
-        if(s.y > H+12){
-          s.y = -Math.random()*40;          // neu von oben
-          s.len = 6 + (Math.random()*16|0); // neue Länge
-          s.v = 0.4 + Math.random()*0.8;    // neue Geschwindigkeit
+        // Bewegung
+        s.y += s.v * 0.016; // ~60fps
+        if (s.y * H > H + 12){
+          s.y = -Math.random()*0.2; // neu von oben
+          s.len = 0.05 + Math.random()*0.18;
+          s.v   = 0.08 + Math.random()*0.22;
         }
       }
+
+      requestAnimationFrame(rainFrame);
     }
+    requestAnimationFrame(rainFrame);
 
-    // ---------- Frame Loop ----------
-    function frame(t){
-      // Weißes Glas „reinigen“
-      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
-
-      drawCity(t);
-      drawRain(t);
-
-      requestAnimationFrame(frame);
-    }
-    requestAnimationFrame(frame);
-
-    // Robust bei Größenwechsel (Canvas bleibt Low-Res; CSS skaliert)
-    const ro = new ResizeObserver(()=>{ /* no-op */ });
-    ro.observe(section);
-    document.addEventListener('ws:slide-change', ()=>{ /* no-op */ });
+    // neu zeichnen bei Größenänderung / Slide-Wechsel
+    document.addEventListener('ws:slide-change', () => {
+      fitCanvases();
+      if (img.complete) renderPixelBackground();
+    });
+    window.addEventListener('resize', () => {
+      fitCanvases();
+      if (img.complete) renderPixelBackground();
+    }, {passive:true});
   })();
   </script>
 </section>
-
-
 
   </article>
 </main>
