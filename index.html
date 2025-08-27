@@ -10,25 +10,22 @@
 <body>
 <main role="main">
   <article id="webslides">
-    <section class="fullscreen aligncenter" id="pixel-rain-intro">
+   <section class="fullscreen aligncenter" id="pixel-rain-intro">
   <style>
     #pixel-rain-intro { background:#fff; }
-    #pixel-rain-intro .stage {
+    #pixel-rain-intro .stage{
       position:absolute; inset:0; width:100%; height:100%;
-      image-rendering: pixelated; image-rendering: crisp-edges; display:block;
+      display:block; image-rendering:pixelated; image-rendering:crisp-edges;
     }
-    #pixel-rain-intro .overlay {
+    #pixel-rain-intro .overlay{
       position:relative; z-index:3; height:100%;
       display:grid; place-items:center; color:#000;
     }
-    #pixel-rain-intro h1 { margin:0; font-size:4rem; letter-spacing:.06em; }
-    #pixel-rain-intro .loading {
-      position:absolute; bottom:24px; left:24px; color:#666;
-      font-size:.9rem; z-index:4;
+    #pixel-rain-intro h1{ margin:0; font-size:4rem; letter-spacing:.06em; }
+    #pixel-rain-intro .loading{
+      position:absolute; bottom:24px; left:24px; color:#666; font-size:.9rem; z-index:4;
     }
-    @media (max-width:720px) {
-      #pixel-rain-intro h1 { font-size:2.6rem; }
-    }
+    @media (max-width:720px){ #pixel-rain-intro h1{ font-size:2.6rem; } }
   </style>
 
   <canvas class="stage" id="px-bg"></canvas>
@@ -43,104 +40,142 @@
     const bgx = bg.getContext('2d', {alpha:false}), rgx = rg.getContext('2d', {alpha:true});
     bgx.imageSmoothingEnabled = false; rgx.imageSmoothingEnabled = false;
 
-    const PIX_WIDTH = 320, CONTRAST = 0.95;
-    const PALETTE = [0,85,170,255];
-    const SOURCE = 'images/window-city.jpg?v=' + Date.now();
+    // === Settings (deine) ===
+    const PIX_WIDTH = 320;
+    const CONTRAST  = 0.95;
+    const PALETTE   = [0,85,170,255];
+    const SOURCE    = 'images/window-city.jpg?v=' + Date.now(); // Cache-Buster
 
-    function clamp(v, mi, ma) { return v<mi?mi:v>ma?ma:v; }
-    function contrast(v, c) { return clamp((v-128)*c+128, 0, 255); }
-    function nearest4(g) {
-      return PALETTE.reduce((best,p)=>(Math.abs(p-g)<Math.abs(best-g)?p:best), PALETTE[0]);
-    }
+    // Performance: interne Renderauflösung (0.6 = 60% der CSS-Größe)
+    const INTERNAL_SCALE = 0.6;
 
-    function fitCanvas(){
+    // Helpers
+    const clamp=(v,mi,ma)=>v<mi?mi:v>ma?ma:v;
+    const contrast=(v,c)=>clamp((v-128)*c+128,0,255);
+    const nearest4=g=>PALETTE.reduce((a,p)=>Math.abs(p-g)<Math.abs(a-g)?p:a,PALETTE[0]);
+
+    // Canvas resize (debounced)
+    let resizeTimer=null;
+    function fitCanvases(){
       const r = section.getBoundingClientRect();
-      bg.width = rg.width = Math.max(2, Math.floor(r.width));
-      bg.height= rg.height= Math.max(2, Math.floor(r.height));
+      const W = Math.max(2, Math.floor(r.width));
+      const H = Math.max(2, Math.floor(r.height));
+      // CSS-Größe bleibt 100%; interne Größe reduziert:
+      bg.width = Math.floor(W*INTERNAL_SCALE);
+      bg.height= Math.floor(H*INTERNAL_SCALE);
+      rg.width = Math.floor(W*INTERNAL_SCALE);
+      rg.height= Math.floor(H*INTERNAL_SCALE);
+      // Sofort weiß füllen
       bgx.fillStyle = '#fff'; bgx.fillRect(0,0,bg.width,bg.height);
+      // Re-Render BG nach Resize (debounced)
+      if (img.complete){
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(renderBackground, 120);
+      }
     }
-    new ResizeObserver(fitCanvas).observe(section);
-    fitCanvas();
 
+    new ResizeObserver(()=>fitCanvases()).observe(section);
+    fitCanvases();
+
+    // Bild laden -> Pixel-Art rendern
     const img = new Image();
     img.onload = ()=>{ renderBackground(); pxload.style.display='none'; };
-    img.onerror = ()=>{ pxload.textContent = 'Bild nicht gefunden: ' + SOURCE; };
+    img.onerror = ()=>{ pxload.textContent = 'Bild nicht gefunden: images/window-city.jpg'; };
     img.src = SOURCE;
     const pxload = document.getElementById('px-load');
 
     function renderBackground(){
-      const r = img.height / img.width;
-      const w = PIX_WIDTH, h = Math.round(w * r);
+      const ratio = img.height/img.width;
+      const w = PIX_WIDTH, h = Math.round(w*ratio);
       const small = document.createElement('canvas');
       small.width = w; small.height = h;
-      const sx = small.getContext('2d');
-      sx.imageSmoothingEnabled = false;
-      sx.drawImage(img, 0, 0, w, h);
-
+      const sx = small.getContext('2d'); sx.imageSmoothingEnabled = false;
+      sx.drawImage(img,0,0,w,h);
       const id = sx.getImageData(0,0,w,h), d = id.data;
-      for (let i=0; i<d.length; i+=4) {
+      for (let i=0;i<d.length;i+=4){
         let g = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
         g = contrast(g, CONTRAST);
         const q = nearest4(g);
         d[i]=d[i+1]=d[i+2]=q; d[i+3]=255;
       }
-      sx.putImageData(id, 0, 0);
+      sx.putImageData(id,0,0);
       drawCover(bgx, small);
     }
 
     function drawCover(ctx, src){
       const W = ctx.canvas.width, H = ctx.canvas.height;
-      const sw = src.width, sh = src.height, sR = sw/sh, tR = W/H;
-      let dw = W, dh = Math.round(W/sR);
-      if (dh < H) { dh=H; dw=Math.round(H*sR); }
-      const dx = Math.round((W-dw)/2), dy = Math.round((H-dh)/2);
-      ctx.imageSmoothingEnabled = false;
-      ctx.fillStyle = '#fff'; ctx.fillRect(0,0,W,H);
+      const sw=src.width, sh=src.height, sR=sw/sh, tR=W/H;
+      let dw=W, dh=Math.round(W/sR);
+      if (dh<H){ dh=H; dw=Math.round(H*sR); }
+      const dx=Math.round((W-dw)/2), dy=Math.round((H-dh)/2);
+      ctx.imageSmoothingEnabled=false;
+      ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
       ctx.drawImage(src,0,0,sw,sh,dx,dy,dw,dh);
     }
 
-    const COLS = 64;
-    const streaks = Array.from({length:COLS},(_,i)=>({
-      xNorm:(i+Math.random()*0.5)/COLS, y:Math.random(), v:0.08+Math.random()*0.22,
-      len:0.05+Math.random()*0.18, wob:Math.random()*0.5+0.15
-    }));
+    // === Regen (ohne Fog-Overlay) ===
+    let COLS = 64; // Basis
+    let streaks = [];
+    function buildRain(){
+      const W = rg.width; // interne Breite!
+      // Dichte adaptiv: ~eine Säule pro ~18px CSS → geteilt durch INTERNAL_SCALE
+      COLS = clamp(Math.round((W/INTERNAL_SCALE)/18), 36, 120);
+      streaks = Array.from({length:COLS}, (_,i)=>({
+        xNorm:(i+Math.random()*0.5)/COLS,
+        y: Math.random(),
+        v: 0.12 + Math.random()*0.28,    // etwas schneller
+        len: 0.06 + Math.random()*0.22,  // längere Läufer
+        wob: Math.random()*0.5 + 0.15
+      }));
+    }
+    buildRain();
 
-    function rainFrame(t){
+    let last = performance.now();
+    function loop(now){
+      const dt = Math.min(0.05, (now - last)/1000); last = now; // max 50ms
       const W = rg.width, H = rg.height;
       rgx.clearRect(0,0,W,H);
-      rgx.globalAlpha = 0.06; rgx.fillStyle='#000'; rgx.fillRect(0,0,W,H); rgx.globalAlpha=1;
       rgx.fillStyle='#000';
-      streaks.forEach(s=>{
-        const x = Math.round(s.xNorm*W + Math.sin(t*0.0009 + s.xNorm*10)*s.wob*6);
-        const y = s.y*H, L = Math.round(s.len*H);
-        for (let k=0; k<L; k+=2) {
-          const yy = Math.round(y + k);
-          if (yy>=0 && yy<H) {
+      for (const s of streaks){
+        const x = Math.round(s.xNorm*W + Math.sin(now*0.0009 + s.xNorm*10)*s.wob*6*INTERNAL_SCALE);
+        const y = s.y * H;
+        const L = Math.round(s.len * H);
+        for (let k=0;k<L;k+=2){
+          const yy = (y + k)|0;
+          if (yy>=0 && yy<H){
             rgx.fillRect(x, yy, 1, 1);
-            if (k % 6===0) {
-              if (x+1 < W) rgx.fillRect(x+1,yy,1,1);
-              if (x-1 >=0) rgx.fillRect(x-1,yy,1,1);
+            if ((k % 6)===0){
+              if (x+1 < W) rgx.fillRect(x+1, yy, 1, 1);
+              if (x-1 >=0) rgx.fillRect(x-1, yy, 1, 1);
             }
           }
         }
-        rgx.fillRect(x-1, Math.round(y+L+1),3,2);
-        s.y += s.v*0.016;
-        if (s.y*H > H+12) {
+        // Tropfen-Kopf
+        rgx.fillRect(x-1, (y+L+1)|0, 3, 2);
+        // Bewegung per dt
+        s.y += s.v * dt;
+        if (s.y * H > H + 12){
           s.y = -Math.random()*0.2;
-          s.len = 0.05 + Math.random()*0.18;
-          s.v = 0.08 + Math.random()*0.22;
+          s.len = 0.06 + Math.random()*0.22;
+          s.v   = 0.12 + Math.random()*0.28;
         }
-      });
-      requestAnimationFrame(rainFrame);
+      }
+      requestAnimationFrame(loop);
     }
-    requestAnimationFrame(rainFrame);
+    requestAnimationFrame(loop);
 
-    document.addEventListener('ws:slide-change', ()=>{ fitCanvas(); if (img.complete) renderBackground(); });
-    window.addEventListener('resize', ()=>{ fitCanvas(); if (img.complete) renderBackground(); }, {passive:true});
+    // Rebuild Rain bei Resize (debounced)
+    let rebuildTimer=null;
+    function onResize(){
+      fitCanvases();
+      clearTimeout(rebuildTimer);
+      rebuildTimer = setTimeout(()=>{ buildRain(); if (img.complete) renderBackground(); }, 120);
+    }
+    document.addEventListener('ws:slide-change', onResize);
+    window.addEventListener('resize', onResize, {passive:true});
   })();
   </script>
 </section>
-
 
   </article>
 </main>
