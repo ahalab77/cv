@@ -22,7 +22,6 @@
 
   <script>
   (function(){
-    // canvases
     const bg = document.getElementById('px-bg');
     const rg = document.getElementById('px-rain');
     const bgx = bg.getContext('2d', {alpha:false});
@@ -30,21 +29,23 @@
     bgx.imageSmoothingEnabled = false;
     rgx.imageSmoothingEnabled = false;
 
-    // helpers
+    // WICHTIG: img existiert schon im Scope – wird später befüllt
+    let img = null;
+
     function fit(){
       const W = innerWidth, H = innerHeight;
       if (bg.width!==W) bg.width=W; if (bg.height!==H) bg.height=H;
       if (rg.width!==W) rg.width=W; if (rg.height!==H) rg.height=H;
       bgx.fillStyle = '#fff'; bgx.fillRect(0,0,W,H);
-      if (img.complete) render();
+      if (img && img.complete) render();   // erst zeichnen, wenn vorhanden
     }
     addEventListener('resize', fit, {passive:true});
     fit();
 
     // ---------- Bild laden ----------
-    const SOURCE = 'images/window-city.jpg?v=' + Date.now(); // <- liegt unter /cv/images/window-city.jpg
-    const img = new Image();
+    const SOURCE = 'images/window-city.jpg?v=' + Date.now(); // /cv/images/window-city.jpg
     const loader = document.getElementById('load');
+    img = new Image();
     img.crossOrigin = 'anonymous';
     img.onload  = ()=>{ loader.style.display='none'; render(); };
     img.onerror = ()=>{ loader.textContent = 'Bild nicht gefunden: ' + SOURCE; };
@@ -52,9 +53,9 @@
 
     // ---------- Pixelizer ----------
     const clamp=(v,mi,ma)=>v<mi?mi:v>ma?ma:v;
-    const PIX_W = 320;     // Pixel-„Breite“
-    let levels  = 4;       // 4 Graustufen (Taste B toggelt 4↔2)
-    let showPix = true;    // P toggelt Original↔Pixel
+    const PIX_W = 320;
+    let levels  = 4;     // B toggelt 4↔2
+    let showPix = true;  // P toggelt Original↔Pixel
     const GAMMA = 0.9, PUNCH = 1.25;
 
     function grayscale(id){
