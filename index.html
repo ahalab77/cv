@@ -10,7 +10,7 @@
 <body>
 <main role="main">
   <article id="webslides">
-   <section class="fullscreen aligncenter" id="pixel-rain-intro">
+  <section class="fullscreen aligncenter" id="pixel-rain-intro">
   <style>
     #pixel-rain-intro { background:#fff; }
     #pixel-rain-intro .stage{
@@ -40,139 +40,164 @@
     const bgx = bg.getContext('2d', {alpha:false}), rgx = rg.getContext('2d', {alpha:true});
     bgx.imageSmoothingEnabled = false; rgx.imageSmoothingEnabled = false;
 
-    // === Settings (deine) ===
-    const PIX_WIDTH = 320;
-    const CONTRAST  = 0.95;
-    const PALETTE   = [0,85,170,255];
-    const SOURCE    = 'images/window-city.jpg?v=' + Date.now(); // Cache-Buster
+    // Bild (lokal im Repo):
+    const SOURCE = 'images/window-city.jpg?v=' + Date.now(); // Cache-Buster
 
-    // Performance: interne Renderauflösung (0.6 = 60% der CSS-Größe)
-    const INTERNAL_SCALE = 0.6;
+    // Pixelizer-Settings
+    const PIX_WIDTH = 320;      // Breite des Pixelrasters
+    const USE_4_LEVELS = true;  // 4 Graustufen; per Taste B auf 2 Levels umschaltbar
+    let   showPixel = true;     // Taste P toggelt original/pixel
 
-    // Helpers
-    const clamp=(v,mi,ma)=>v<mi?mi:v>ma?ma:v;
-    const contrast=(v,c)=>clamp((v-128)*c+128,0,255);
-    const nearest4=g=>PALETTE.reduce((a,p)=>Math.abs(p-g)<Math.abs(a-g)?p:a,PALETTE[0]);
+    // Regen-Settings
+    const COLS_BASE = 64;
 
-    // Canvas resize (debounced)
-    let resizeTimer=null;
-    function fitCanvases(){
-      const r = section.getBoundingClientRect();
-      const W = Math.max(2, Math.floor(r.width));
-      const H = Math.max(2, Math.floor(r.height));
-      // CSS-Größe bleibt 100%; interne Größe reduziert:
-      bg.width = Math.floor(W*INTERNAL_SCALE);
-      bg.height= Math.floor(H*INTERNAL_SCALE);
-      rg.width = Math.floor(W*INTERNAL_SCALE);
-      rg.height= Math.floor(H*INTERNAL_SCALE);
-      // Sofort weiß füllen
-      bgx.fillStyle = '#fff'; bgx.fillRect(0,0,bg.width,bg.height);
-      // Re-Render BG nach Resize (debounced)
-      if (img.complete){
-        clearTimeout(resizeTimer);
-        resizeTimer = setTimeout(renderBackground, 120);
-      }
-    }
-
-    new ResizeObserver(()=>fitCanvases()).observe(section);
-    fitCanvases();
-
-    // Bild laden -> Pixel-Art rendern
-    const img = new Image();
-    img.onload = ()=>{ renderBackground(); pxload.style.display='none'; };
-    img.onerror = ()=>{ pxload.textContent = 'Bild nicht gefunden: images/window-city.jpg'; };
-    img.src = SOURCE;
     const pxload = document.getElementById('px-load');
 
-    function renderBackground(){
+    function fit(){
+      const r = section.getBoundingClientRect();
+      bg.width = Math.max(2, Math.floor(r.width));
+      bg.height= Math.max(2, Math.floor(r.height));
+      rg.width = bg.width;
+      rg.height= bg.height;
+      bgx.fillStyle = '#fff'; bgx.fillRect(0,0,bg.width,bg.height);
+      if (img.complete) render();
+    }
+    new ResizeObserver(fit).observe(section); fit();
+
+    const img = new Image();
+    img.onload = ()=>{ pxload.style.display='none'; render(); };
+    img.onerror = ()=>{ pxload.textContent='Bild nicht gefunden: images/window-city.jpg'; };
+    img.src = SOURCE;
+
+    // ---- Pixelizer mit Auto-Kontrast (Histogramm-Stretch zwischen P5..P95) ----
+    function grayscale(imgData){
+      const d = imgData.data;
+      const g = new Uint8ClampedArray(d.length/4);
+      for(let i=0,j=0;i<d.length;i+=4,++j){
+        g[j] = (0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2])|0;
+      }
+      return g;
+    }
+    function histStretch(g){
+      // Perzentile 5..95
+      const hist = new Uint32Array(256);
+      for(const v of g) hist[v]++;
+      let cum=0, p5=0, p95=255, total=g.length;
+      for(let i=0;i<256;i++){ cum+=hist[i]; if(cum>=total*0.05){ p5=i; break; } }
+      cum=0;
+      for(let i=255;i>=0;i--){ cum+=hist[i]; if(cum>=total*0.05){ p95=i; break; } }
+      const range = Math.max(1, p95 - p5);
+      const lut = new Uint8Array(256);
+      for(let i=0;i<256;i++){
+        let v = ( (i - p5) * 255 / range );
+        if (v<0) v=0; if (v>255) v=255;
+        lut[i]=v|0;
+      }
+      for(let i=0;i<g.length;i++) g[i]=lut[g[i]];
+      return g;
+    }
+    function quantize(g, levels){ // levels = 2 oder 4
+      const out = new Uint8ClampedArray(g.length);
+      if(levels===2){
+        for(let i=0;i<g.length;i++){ out[i] = (g[i]<128)?0:255; }
+      }else{ // 4 Level
+        for(let i=0;i<g.length;i++){
+          const v=g[i];
+          out[i] = (v<64)?0 : (v<128)?85 : (v<192)?170 : 255;
+        }
+      }
+      return out;
+    }
+    function drawPixelized(){
       const ratio = img.height/img.width;
-      const w = PIX_WIDTH, h = Math.round(w*ratio);
+      const w = PIX_WIDTH, h = Math.round(w * ratio);
       const small = document.createElement('canvas');
-      small.width = w; small.height = h;
-      const sx = small.getContext('2d'); sx.imageSmoothingEnabled = false;
+      small.width=w; small.height=h;
+      const sx = small.getContext('2d'); sx.imageSmoothingEnabled=false;
       sx.drawImage(img,0,0,w,h);
-      const id = sx.getImageData(0,0,w,h), d = id.data;
-      for (let i=0;i<d.length;i+=4){
-        let g = 0.299*d[i] + 0.587*d[i+1] + 0.114*d[i+2];
-        g = contrast(g, CONTRAST);
-        const q = nearest4(g);
-        d[i]=d[i+1]=d[i+2]=q; d[i+3]=255;
+      const id = sx.getImageData(0,0,w,h);
+      let g = grayscale(id);
+      g = histStretch(g);  // ← macht den grauen Schleier weg, hebt Kontraste
+      const q = quantize(g, USE_4_LEVELS?4:2);
+      // zurück in ImageData
+      const d = id.data;
+      for(let i=0,j=0;i<d.length;i+=4,++j){
+        const v = q[j]; d[i]=d[i+1]=d[i+2]=v; d[i+3]=255;
       }
       sx.putImageData(id,0,0);
       drawCover(bgx, small);
     }
-
+    function drawOriginal(){
+      // original (ohne Pixelizer) – zum Gegencheck
+      drawCover(bgx, img);
+    }
     function drawCover(ctx, src){
-      const W = ctx.canvas.width, H = ctx.canvas.height;
-      const sw=src.width, sh=src.height, sR=sw/sh, tR=W/H;
+      const W=ctx.canvas.width,H=ctx.canvas.height;
+      let sw,sh;
+      if(src instanceof HTMLImageElement){ sw=src.naturalWidth; sh=src.naturalHeight; }
+      else { sw=src.width; sh=src.height; }
+      const sR=sw/sh, tR=W/H;
       let dw=W, dh=Math.round(W/sR);
-      if (dh<H){ dh=H; dw=Math.round(H*sR); }
+      if(dh<H){ dh=H; dw=Math.round(H*sR); }
       const dx=Math.round((W-dw)/2), dy=Math.round((H-dh)/2);
       ctx.imageSmoothingEnabled=false;
       ctx.fillStyle='#fff'; ctx.fillRect(0,0,W,H);
       ctx.drawImage(src,0,0,sw,sh,dx,dy,dw,dh);
     }
-
-    // === Regen (ohne Fog-Overlay) ===
-    let COLS = 64; // Basis
-    let streaks = [];
-    function buildRain(){
-      const W = rg.width; // interne Breite!
-      // Dichte adaptiv: ~eine Säule pro ~18px CSS → geteilt durch INTERNAL_SCALE
-      COLS = clamp(Math.round((W/INTERNAL_SCALE)/18), 36, 120);
-      streaks = Array.from({length:COLS}, (_,i)=>({
-        xNorm:(i+Math.random()*0.5)/COLS,
-        y: Math.random(),
-        v: 0.12 + Math.random()*0.28,    // etwas schneller
-        len: 0.06 + Math.random()*0.22,  // längere Läufer
-        wob: Math.random()*0.5 + 0.15
-      }));
+    function render(){
+      if(showPixel) drawPixelized();
+      else drawOriginal();
     }
-    buildRain();
+
+    // ---- Regen (leicht, performant) ----
+    let COLS = COLS_BASE;
+    function density(){ // abhängig von Breite
+      COLS = Math.max(36, Math.min(120, Math.round(bg.width / 18)));
+    }
+    density();
+    let streaks = Array.from({length:COLS},(_,i)=>({
+      xNorm:(i+Math.random()*0.5)/COLS, y:Math.random(),
+      v:0.18+Math.random()*0.32, len:0.06+Math.random()*0.22, wob:Math.random()*0.5+0.15
+    }));
 
     let last = performance.now();
     function loop(now){
-      const dt = Math.min(0.05, (now - last)/1000); last = now; // max 50ms
-      const W = rg.width, H = rg.height;
+      const dt = Math.min(0.05, (now-last)/1000); last=now;
+      const W=rg.width, H=rg.height;
       rgx.clearRect(0,0,W,H);
       rgx.fillStyle='#000';
-      for (const s of streaks){
-        const x = Math.round(s.xNorm*W + Math.sin(now*0.0009 + s.xNorm*10)*s.wob*6*INTERNAL_SCALE);
-        const y = s.y * H;
-        const L = Math.round(s.len * H);
-        for (let k=0;k<L;k+=2){
-          const yy = (y + k)|0;
-          if (yy>=0 && yy<H){
-            rgx.fillRect(x, yy, 1, 1);
-            if ((k % 6)===0){
-              if (x+1 < W) rgx.fillRect(x+1, yy, 1, 1);
-              if (x-1 >=0) rgx.fillRect(x-1, yy, 1, 1);
-            }
+      for(const s of streaks){
+        const x = Math.round(s.xNorm*W + Math.sin(now*0.0009+s.xNorm*10)*s.wob*6);
+        const y = s.y*H, L = Math.round(s.len*H);
+        for(let k=0;k<L;k+=2){
+          const yy=(y+k)|0;
+          if(yy>=0 && yy<H){
+            rgx.fillRect(x,yy,1,1);
+            if((k%6)===0){ if(x+1<W)rgx.fillRect(x+1,yy,1,1); if(x-1>=0)rgx.fillRect(x-1,yy,1,1); }
           }
         }
-        // Tropfen-Kopf
         rgx.fillRect(x-1, (y+L+1)|0, 3, 2);
-        // Bewegung per dt
-        s.y += s.v * dt;
-        if (s.y * H > H + 12){
-          s.y = -Math.random()*0.2;
-          s.len = 0.06 + Math.random()*0.22;
-          s.v   = 0.12 + Math.random()*0.28;
-        }
+        s.y += s.v*dt;
+        if(s.y*H > H+12){ s.y = -Math.random()*0.2; s.len=0.06+Math.random()*0.22; s.v=0.18+Math.random()*0.32; }
       }
       requestAnimationFrame(loop);
     }
     requestAnimationFrame(loop);
 
-    // Rebuild Rain bei Resize (debounced)
-    let rebuildTimer=null;
-    function onResize(){
-      fitCanvases();
-      clearTimeout(rebuildTimer);
-      rebuildTimer = setTimeout(()=>{ buildRain(); if (img.complete) renderBackground(); }, 120);
-    }
-    document.addEventListener('ws:slide-change', onResize);
-    window.addEventListener('resize', onResize, {passive:true});
+    // Events
+    window.addEventListener('resize', ()=>{
+      fit(); density();
+      streaks = Array.from({length:COLS},(_,i)=>({
+        xNorm:(i+Math.random()*0.5)/COLS, y:Math.random(),
+        v:0.18+Math.random()*0.32, len:0.06+Math.random()*0.22, wob:Math.random()*0.5+0.15
+      }));
+    }, {passive:true});
+
+    // Tastatur: P = Pixel/Original, B = 4/2 Levels
+    window.addEventListener('keydown', (e)=>{
+      if(e.key.toLowerCase()==='p'){ showPixel=!showPixel; render(); }
+      if(e.key.toLowerCase()==='b'){ window.USE_4_LEVELS = !window.USE_4_LEVELS; render(); }
+    });
   })();
   </script>
 </section>
