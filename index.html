@@ -3,143 +3,120 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>alexhatchl — pixel water</title>
+  <title>alexhatchl — spiegel</title>
   <style>
     html,body{
-      height:100%; margin:0; background:#0a0c20;
-      overflow:hidden; /* echtes Fullscreen-Canvas */
+      height:100%; margin:0; background:#0a0c20; overflow:hidden;
     }
     canvas{
       position:fixed; inset:0; width:100%; height:100%;
       display:block;
-      /* wichtig für den Pixel-Look: */
       image-rendering: pixelated;
       image-rendering: crisp-edges;
     }
-    .center {
-      position:fixed; inset:0; display:grid; place-items:center;
-      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
-      color:#ffffff; text-shadow:0 2px 6px rgba(0,0,0,.7);
-      pointer-events:none; letter-spacing:.06em; font-size:clamp(28px, 6vw, 64px);
-    }
+    #plants{ z-index:5; pointer-events:none; }
   </style>
 </head>
 <body>
-  <canvas id="view"></canvas>
-  <div class="center">alexhatchl</div>
+  <!-- Wasser -->
+  <canvas id="water"></canvas>
+  <!-- Pflanzen -->
+  <canvas id="plants"></canvas>
 
   <script>
   (function(){
-    const IMG_SRC = 'images/BG.png';   // <-- dein Bild
+    const IMG_WATER = "images/BG_1.png";
+    const IMG_PLANTS = "images/BG_MASK.png";
 
-    // Pixel-Parameter (kannst du anpassen)
-    const PIXEL_SIZE_DESKTOP = 4;      // je größer, desto „blockiger“
-    const PIXEL_SIZE_MOBILE  = 3;
+    const cWater  = document.getElementById("water");
+    const cPlants = document.getElementById("plants");
+    const wtx = cWater.getContext("2d",{alpha:false});
+    const ptx = cPlants.getContext("2d");
 
-    // Wellen-Parameter
-    const WAVE_AMP   = 0.02;           // Amplitude relativ zur Bildbreite (0.0–0.05 ist gut)
-    const WAVE_FREQ  = 10;             // wie „eng“ die Wellen sind
-    const WAVE_SPEED = 0.6;            // Geschwindigkeit
+    const buf = document.createElement("canvas");
+    const bufx = buf.getContext("2d");
 
-    const canvas = document.getElementById('view');
-    const ctx    = canvas.getContext('2d', {alpha:false, desynchronized:true});
-    ctx.imageSmoothingEnabled = false;
+    let imgWater = new Image();
+    let imgPlants = new Image();
 
-    // Offscreen-Buffer (Low-Res → Pixel-Look)
-    const buf    = document.createElement('canvas');
-    const bufx   = buf.getContext('2d', {alpha:false});
-    bufx.imageSmoothingEnabled = false;
+    imgWater.onload  = ()=>{ fit(); start(); };
+    imgPlants.onload = ()=>{ fit(); drawPlants(); };
 
-    // Bild laden
-    const img = new Image();
-    img.onload = () => { fit(); start(); };
-    img.onerror = () => {
-      // Fallback, falls Bild fehlt
-      ctx.fillStyle = '#222'; ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.fillStyle = '#fff'; ctx.fillText('BG.png nicht gefunden', 20, 40);
-    };
-    img.src = IMG_SRC + '?v=' + Date.now(); // Cache-Buster
+    imgWater.src  = IMG_WATER;
+    imgPlants.src = IMG_PLANTS;
 
-    // Größen/Buffer anpassen
+    // Offscreen-Canvas für Spiegeltext
+    const textCanvas = document.createElement("canvas");
+    const txtx = textCanvas.getContext("2d");
+    textCanvas.width = 512;
+    textCanvas.height = 128;
+    txtx.fillStyle="#fff";
+    txtx.font="bold 80px sans-serif";
+    txtx.textAlign="center";
+    txtx.textBaseline="middle";
+    txtx.fillText("alexhatchl", textCanvas.width/2, textCanvas.height/2);
+
     function fit(){
-      const W = canvas.width  = Math.max(2, window.innerWidth);
-      const H = canvas.height = Math.max(2, window.innerHeight);
-
-      const pixelSize = (Math.min(W,H) < 820) ? PIXEL_SIZE_MOBILE : PIXEL_SIZE_DESKTOP;
-      buf.width  = Math.ceil(W / pixelSize);
-      buf.height = Math.ceil(H / pixelSize);
+      const W=innerWidth,H=innerHeight;
+      cWater.width=W; cWater.height=H;
+      cPlants.width=W; cPlants.height=H;
+      buf.width=Math.ceil(W/4); buf.height=Math.ceil(H/4);
+      drawPlants();
     }
-    window.addEventListener('resize', fit, {passive:true});
+    window.addEventListener("resize",fit);
 
-    // „cover“: berechne Quellrechteck im Bild, das den Buffer vollständig füllt
-    function computeCoverRect(srcW, srcH, dstW, dstH){
-      const sR = srcW/srcH, dR = dstW/dstH;
-      let sw, sh, sx, sy;
-      if (sR > dR){ // Quelle „zu breit“ → in der Breite beschneiden
-        sh = srcH; sw = Math.round(sh * dR);
-        sx = Math.round((srcW - sw)/2); sy = 0;
-      } else {     // Quelle „zu hoch“ → in der Höhe beschneiden
-        sw = srcW; sh = Math.round(sw / dR);
-        sx = 0; sy = Math.round((srcH - sh)/2);
-      }
-      return {sx, sy, sw, sh};
+    function drawPlants(){
+      const W=cPlants.width,H=cPlants.height;
+      ptx.clearRect(0,0,W,H);
+      ptx.imageSmoothingEnabled=false;
+      const sR=imgPlants.width/imgPlants.height, dR=W/H;
+      let dw=W, dh=Math.round(W/sR);
+      if(dh<H){ dh=H; dw=Math.round(H*sR); }
+      const dx=(W-dw)/2, dy=(H-dh)/2;
+      ptx.drawImage(imgPlants,0,0,imgPlants.width,imgPlants.height,dx,dy,dw,dh);
     }
 
-    // Eine Frame-Zeile in den Low-Res-Buffer schreiben (mit horizontaler Wellenversatz)
-    function drawWaveRow(y, t, cover){
-      const dstW = buf.width,  dstH = buf.height;
-      const srcW = cover.sw,   srcH = cover.sh;
-
-      // korrespondierende y-Position im Quellbild:
-      const sy = cover.sy + (y / dstH) * srcH;
-
-      // horizontale Verschiebung (Quelle) für diese Zeile:
-      const phase = (y / dstH) * WAVE_FREQ + t * WAVE_SPEED;
-      const shift = Math.sin(phase) * (WAVE_AMP * srcW); // in Quellpixeln
-
-      // Quell-x mit Clamp (keine Ränder „leer“)
-      let sx = Math.round(cover.sx + shift);
-      if (sx < cover.sx) sx = cover.sx;
-      if (sx > cover.sx + srcW - 1) sx = cover.sx + srcW - 1;
-
-      // Wir ziehen eine 1-Pixel hohe Zeile aus der Quelle auf die gesamte Zielbreite
-      // und schreiben sie in eine 1-Pixel hohe Zeile im Buffer:
-      bufx.drawImage(
-        img,
-        sx, Math.floor(sy), Math.max(1, srcW - (sx - cover.sx)), 1, // src (Zeile)
-        0, y, dstW, 1                                                // dst (Zeile)
-      );
+    function computeCover(srcW,srcH,dstW,dstH){
+      const sR=srcW/srcH, dR=dstW/dstH;
+      let sw,sh,sx,sy;
+      if(sR>dR){ sh=srcH; sw=Math.round(sh*dR); sx=(srcW-sw)/2; sy=0; }
+      else{ sw=srcW; sh=Math.round(sw/dR); sx=0; sy=(srcH-sh)/2; }
+      return {sx,sy,sw,sh};
     }
 
-    // Animation
-    let raf = null, t0 = performance.now();
-    function frame(now){
-      const t = (now - t0) * 0.001; // Sekunden
+    function frame(t){
+      const W=cWater.width,H=cWater.height;
+      const cover=computeCover(imgWater.width,imgWater.height,buf.width,buf.height);
 
-      // Low-Res-Buffer komplett neu zeichnen
-      const cover = computeCoverRect(img.naturalWidth, img.naturalHeight, buf.width, buf.height);
-      // optional: leichte Abdunkelung als Grund
-      bufx.fillStyle = '#0a0c20';
-      bufx.fillRect(0,0,buf.width,buf.height);
+      // Wasser in Buffer mit Wellen
+      for(let y=0;y<buf.height;y++){
+        const sy=cover.sy+(y/buf.height)*cover.sh;
+        const shift=Math.sin(y/12+t*0.002)*6; // horizontale Wellen
+        bufx.drawImage(imgWater,
+          cover.sx+shift,sy,cover.sw,1,
+          0,y,buf.width,1
+        );
 
-      for (let y=0; y<buf.height; y++){
-        drawWaveRow(y, t, cover);
+        // Spiegeltext (als Verzerrung sichtbar)
+        const textY = Math.floor(buf.height*0.6);
+        if(y===textY){
+          bufx.globalAlpha=0.15; // sehr subtil
+          bufx.drawImage(textCanvas, buf.width/2-256, textY-64, 512,128);
+          bufx.globalAlpha=1.0;
+        }
       }
 
-      // Buffer → Hauptcanvas „cover“-skaliert, ohne Smoothing ⇒ Pixel-Look
-      const W = canvas.width, H = canvas.height, sR = buf.width/buf.height;
-      let dw=W, dh=Math.round(W/sR); if(dh < H){ dh=H; dw=Math.round(H*sR); }
-      const dx=Math.round((W-dw)/2), dy=Math.round((H-dh)/2);
+      // Buffer → Canvas
+      const sR=buf.width/buf.height;
+      let dw=W, dh=Math.round(W/sR); if(dh<H){ dh=H; dw=Math.round(H*sR);}
+      const dx=(W-dw)/2, dy=(H-dh)/2;
+      wtx.imageSmoothingEnabled=false;
+      wtx.drawImage(buf,0,0,buf.width,buf.height,dx,dy,dw,dh);
 
-      ctx.imageSmoothingEnabled = false;
-      ctx.drawImage(buf, 0,0, buf.width,buf.height, dx,dy,dw,dh);
-
-      raf = requestAnimationFrame(frame);
+      requestAnimationFrame(frame);
     }
 
-    function start(){
-      if(!raf) raf = requestAnimationFrame(frame);
-    }
+    function start(){ requestAnimationFrame(frame); }
   })();
   </script>
 </body>
