@@ -1,250 +1,146 @@
 <!doctype html>
-<html lang="en">
+<html lang="de">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>alexhatchl — portfolio</title>
-
-  <!-- WebSlides CSS -->
-  <link rel="stylesheet" href="https://webslides.tv/static/css/webslides.css" />
-  <link rel="stylesheet" href="https://webslides.tv/static/css/svg-icons.css" />
-
+  <title>alexhatchl — pixel water</title>
   <style>
-    #intro{
-      position:relative !important;
-      min-height:100vh !important;
-      height:100vh !important;
-      overflow:hidden;
-      background:#0a0c20;
+    html,body{
+      height:100%; margin:0; background:#0a0c20;
+      overflow:hidden; /* echtes Fullscreen-Canvas */
     }
-    #intro canvas{
-      position:absolute; inset:0; width:100%; height:100%;
-      display:block; image-rendering:pixelated; image-rendering:crisp-edges;
+    canvas{
+      position:fixed; inset:0; width:100%; height:100%;
+      display:block;
+      /* wichtig für den Pixel-Look: */
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
     }
-    #intro .overlay{
-      position:relative; z-index:4; height:100%;
-      display:grid; place-items:center; color:#ffffff;
-      text-shadow:0 2px 6px rgba(0,0,0,.8);
-      font-size:3.8rem; letter-spacing:.06em;
-      pointer-events:none;
+    .center {
+      position:fixed; inset:0; display:grid; place-items:center;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      color:#ffffff; text-shadow:0 2px 6px rgba(0,0,0,.7);
+      pointer-events:none; letter-spacing:.06em; font-size:clamp(28px, 6vw, 64px);
     }
   </style>
 </head>
 <body>
-<main role="main">
-  <article id="webslides">
+  <canvas id="view"></canvas>
+  <div class="center">alexhatchl</div>
 
-    <!-- SLIDE 1 -->
-    <section class="fullscreen aligncenter" id="intro">
-      <canvas id="water"></canvas>
-      <canvas id="plants"></canvas>
-      <div class="overlay">alexhatchl</div>
-    </section>
+  <script>
+  (function(){
+    const IMG_SRC = 'images/BG.png';   // <-- dein Bild
 
-  </article>
-</main>
+    // Pixel-Parameter (kannst du anpassen)
+    const PIXEL_SIZE_DESKTOP = 4;      // je größer, desto „blockiger“
+    const PIXEL_SIZE_MOBILE  = 3;
 
-<script src="https://webslides.tv/static/js/webslides.js" defer></script>
+    // Wellen-Parameter
+    const WAVE_AMP   = 0.02;           // Amplitude relativ zur Bildbreite (0.0–0.05 ist gut)
+    const WAVE_FREQ  = 10;             // wie „eng“ die Wellen sind
+    const WAVE_SPEED = 0.6;            // Geschwindigkeit
 
-<script defer>
-window.addEventListener('load', () => {
-  window.ws = new WebSlides();
+    const canvas = document.getElementById('view');
+    const ctx    = canvas.getContext('2d', {alpha:false, desynchronized:true});
+    ctx.imageSmoothingEnabled = false;
 
-  const cWater  = document.getElementById('water');
-  const cPlants = document.getElementById('plants');
-  const wtx = cWater.getContext('2d', {alpha:false, desynchronized:true});
-  const ptx = cPlants.getContext('2d', {alpha:true});
-  wtx.imageSmoothingEnabled = false;
-  ptx.imageSmoothingEnabled = false;
+    // Offscreen-Buffer (Low-Res → Pixel-Look)
+    const buf    = document.createElement('canvas');
+    const bufx   = buf.getContext('2d', {alpha:false});
+    bufx.imageSmoothingEnabled = false;
 
-  function fit(){
-    const W = innerWidth, H = innerHeight;
-    cWater.width=W; cWater.height=H;
-    cPlants.width=W; cPlants.height=H;
-    // sichtbarer Erstframe
-    wtx.fillStyle = '#0c1030'; wtx.fillRect(0,0,W,H);
-    drawPlants();
-  }
-  fit();
-  addEventListener('resize', fit, {passive:true});
-  document.addEventListener('ws:slide-change', fit);
+    // Bild laden
+    const img = new Image();
+    img.onload = () => { fit(); start(); };
+    img.onerror = () => {
+      // Fallback, falls Bild fehlt
+      ctx.fillStyle = '#222'; ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle = '#fff'; ctx.fillText('BG.png nicht gefunden', 20, 40);
+    };
+    img.src = IMG_SRC + '?v=' + Date.now(); // Cache-Buster
 
-  // --------- Pflanzen-Silhouetten (dicht, links/rechts) ----------
-  function leaf(ptx, x, y, len, width, tilt){
-    ptx.save();
-    ptx.translate(x,y);
-    ptx.rotate(tilt);
-    ptx.beginPath();
-    ptx.moveTo(0,0);
-    ptx.quadraticCurveTo(width, -len*0.35, 0, -len);
-    ptx.quadraticCurveTo(-width, -len*0.35, 0, 0);
-    ptx.closePath();
-    ptx.fill();
-    ptx.restore();
-  }
-  function stem(ptx, x1,y1, x2,y2, w){
-    ptx.beginPath();
-    ptx.moveTo(x1,y1);
-    ptx.quadraticCurveTo((x1+x2)/2 + (Math.random()*40-20), (y1+y2)/2, x2,y2);
-    ptx.lineWidth = w;
-    ptx.stroke();
-  }
-  function drawPlants(){
-    const W = cPlants.width, H = cPlants.height;
-    ptx.clearRect(0,0,W,H);
-    ptx.fillStyle   = '#000';
-    ptx.strokeStyle = '#000';
-    ptx.globalAlpha = 0.98;
+    // Größen/Buffer anpassen
+    function fit(){
+      const W = canvas.width  = Math.max(2, window.innerWidth);
+      const H = canvas.height = Math.max(2, window.innerHeight);
 
-    // linke Büsche
-    for(let i=0;i<8;i++){
-      const baseX = W*0.02 + i*W*0.02;
-      const baseY = H*(0.65 + Math.random()*0.35);
-      const topY  = baseY - H*(0.15 + Math.random()*0.25);
-      stem(ptx, baseX, H, baseX+Math.random()*40, topY, 6);
-      for(let b=0;b<6;b++){
-        const yy = topY + (H*0.02)*b + Math.random()*18;
-        const xx = baseX + (Math.random()*40 - 20);
-        leaf(ptx, xx, yy, 60+Math.random()*60, 18+Math.random()*12, -0.3+Math.random()*0.6);
+      const pixelSize = (Math.min(W,H) < 820) ? PIXEL_SIZE_MOBILE : PIXEL_SIZE_DESKTOP;
+      buf.width  = Math.ceil(W / pixelSize);
+      buf.height = Math.ceil(H / pixelSize);
+    }
+    window.addEventListener('resize', fit, {passive:true});
+
+    // „cover“: berechne Quellrechteck im Bild, das den Buffer vollständig füllt
+    function computeCoverRect(srcW, srcH, dstW, dstH){
+      const sR = srcW/srcH, dR = dstW/dstH;
+      let sw, sh, sx, sy;
+      if (sR > dR){ // Quelle „zu breit“ → in der Breite beschneiden
+        sh = srcH; sw = Math.round(sh * dR);
+        sx = Math.round((srcW - sw)/2); sy = 0;
+      } else {     // Quelle „zu hoch“ → in der Höhe beschneiden
+        sw = srcW; sh = Math.round(sw / dR);
+        sx = 0; sy = Math.round((srcH - sh)/2);
       }
+      return {sx, sy, sw, sh};
     }
-    // rechte Büsche
-    for(let i=0;i<8;i++){
-      const baseX = W*(0.98 - i*0.02);
-      const baseY = H*(0.65 + Math.random()*0.35);
-      const topY  = baseY - H*(0.15 + Math.random()*0.25);
-      stem(ptx, baseX, H, baseX-Math.random()*40, topY, 6);
-      for(let b=0;b<6;b++){
-        const yy = topY + (H*0.02)*b + Math.random()*18;
-        const xx = baseX + (Math.random()*40 - 20);
-        leaf(ptx, xx, yy, 60+Math.random()*60, 18+Math.random()*12, -0.3+Math.random()*0.6);
+
+    // Eine Frame-Zeile in den Low-Res-Buffer schreiben (mit horizontaler Wellenversatz)
+    function drawWaveRow(y, t, cover){
+      const dstW = buf.width,  dstH = buf.height;
+      const srcW = cover.sw,   srcH = cover.sh;
+
+      // korrespondierende y-Position im Quellbild:
+      const sy = cover.sy + (y / dstH) * srcH;
+
+      // horizontale Verschiebung (Quelle) für diese Zeile:
+      const phase = (y / dstH) * WAVE_FREQ + t * WAVE_SPEED;
+      const shift = Math.sin(phase) * (WAVE_AMP * srcW); // in Quellpixeln
+
+      // Quell-x mit Clamp (keine Ränder „leer“)
+      let sx = Math.round(cover.sx + shift);
+      if (sx < cover.sx) sx = cover.sx;
+      if (sx > cover.sx + srcW - 1) sx = cover.sx + srcW - 1;
+
+      // Wir ziehen eine 1-Pixel hohe Zeile aus der Quelle auf die gesamte Zielbreite
+      // und schreiben sie in eine 1-Pixel hohe Zeile im Buffer:
+      bufx.drawImage(
+        img,
+        sx, Math.floor(sy), Math.max(1, srcW - (sx - cover.sx)), 1, // src (Zeile)
+        0, y, dstW, 1                                                // dst (Zeile)
+      );
+    }
+
+    // Animation
+    let raf = null, t0 = performance.now();
+    function frame(now){
+      const t = (now - t0) * 0.001; // Sekunden
+
+      // Low-Res-Buffer komplett neu zeichnen
+      const cover = computeCoverRect(img.naturalWidth, img.naturalHeight, buf.width, buf.height);
+      // optional: leichte Abdunkelung als Grund
+      bufx.fillStyle = '#0a0c20';
+      bufx.fillRect(0,0,buf.width,buf.height);
+
+      for (let y=0; y<buf.height; y++){
+        drawWaveRow(y, t, cover);
       }
-    }
-  }
 
-  // --------- Wasser: horizontale, gebrochene Lichtbänder ---------
-  const buf = document.createElement('canvas');
-  const btx = buf.getContext('2d', {alpha:false});
-  btx.imageSmoothingEnabled = false;
+      // Buffer → Hauptcanvas „cover“-skaliert, ohne Smoothing ⇒ Pixel-Look
+      const W = canvas.width, H = canvas.height, sR = buf.width/buf.height;
+      let dw=W, dh=Math.round(W/sR); if(dh < H){ dh=H; dw=Math.round(H*sR); }
+      const dx=Math.round((W-dw)/2), dy=Math.round((H-dh)/2);
 
-  const BUF_W = 224; // bewusst klein → grober Pixel-Look
-  let   BUF_H = 126;
+      ctx.imageSmoothingEnabled = false;
+      ctx.drawImage(buf, 0,0, buf.width,buf.height, dx,dy,dw,dh);
 
-  // 4×4 Bayer-Matrix (Ordered Dithering)
-  const bayer4 = [
-    [ 0,  8,  2, 10],
-    [12,  4, 14,  6],
-    [ 3, 11,  1,  9],
-    [15,  7, 13,  5]
-  ];
-  function bayerThreshold(x,y){ return (bayer4[y&3][x&3] + 0.5)/16; }
-
-  // simple hash noise + smoothed noise
-  function hnoise(x,y){ let n=Math.sin(x*127.1+y*311.7)*43758.5453; return n-Math.floor(n); }
-  function snoise(x,y){
-    const xi=Math.floor(x), yi=Math.floor(y);
-    const xf=x-xi, yf=y-yi;
-    const n00=hnoise(xi,yi), n10=hnoise(xi+1,yi), n01=hnoise(xi,yi+1), n11=hnoise(xi+1,yi+1);
-    const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf);
-    return ( (n00*(1-u)+n10*u)*(1-v) + (n01*(1-u)+n11*u)*v );
-  }
-
-  // Farbrampe: 0..1 → deep blue → violet → magenta → orange → yellow
-  function ramp(t){
-    t = Math.max(0, Math.min(1, t));
-    const stops = [
-      {t:0.00, c:[10,12,30]},
-      {t:0.35, c:[28,20,60]},
-      {t:0.60, c:[180,36,90]},
-      {t:0.80, c:[255,130,60]},
-      {t:1.00, c:[255,240,160]}
-    ];
-    let a=stops[0].c, b=stops[stops.length-1].c, ta=0, tb=1;
-    for(let i=0;i<stops.length-1;i++){
-      if(t>=stops[i].t && t<=stops[i+1].t){ a=stops[i].c; b=stops[i+1].c; ta=stops[i].t; tb=stops[i+1].t; break; }
-    }
-    const k=(t-ta)/(tb-ta+1e-6);
-    return [ a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k, a[2]+(b[2]-a[2])*k ];
-  }
-
-  function render(now){
-    const t = now*0.001;
-    const W = cWater.width, H = cWater.height;
-    BUF_H = Math.max(80, Math.round(BUF_W * H / W));
-    buf.width = BUF_W; buf.height = BUF_H;
-
-    const img = btx.getImageData(0,0,BUF_W,BUF_H);
-    const d   = img.data;
-
-    // Mittelpunkt (wo die Sonne spiegelt)
-    const y0 = BUF_H*0.45;
-    const sigma = BUF_H*0.18; // vertikale Ausdehnung der Reflexe
-
-    // 1D-Noise-Felder entlang x, y moduliert → gebrochene Bänder
-    for(let y=0;y<BUF_H;y++){
-      const fy = (y - y0) / sigma;
-      const envelope = Math.exp(-0.5*fy*fy); // hell in Bandmitte, dunkler oben/unten
-
-      for(let x=0;x<BUF_W;x++){
-        const i = (y*BUF_W + x)*4;
-
-        // Basis – dunkles Wasser
-        let r=12, g=14, b=36;
-
-        // mehrere Frequenzen, seitlicher Drift
-        const nx = x/BUF_W, ny = y/BUF_H;
-        const n1 = snoise(nx*40 + t*0.8,  ny*2.0 - t*0.15);
-        const n2 = snoise(nx*90 - t*1.6,  ny*3.0 + t*0.10);
-        const n3 = snoise(nx*180+ t*2.4,  7.3);
-        // zusammengesetztes Feld
-        let signal = 0.55*n1 + 0.30*n2 + 0.15*n3;
-
-        // Schwelle – in der Mitte leichter zu „zünden“
-        const threshold = 0.15 - 0.25*envelope;
-        let intensity = signal - threshold;
-
-        // Clip + Power für schmale, helle Highlights
-        intensity = Math.max(0, intensity);
-        intensity = Math.pow(intensity, 3.0);
-
-        // zufällige Mikrounterbrechungen (körnig)
-        const jitter = (hnoise(x*5.7, y*3.1 + t*0.7) - 0.5) * 0.08;
-        intensity = Math.max(0, intensity + jitter);
-        intensity *= envelope; // außerhalb des Bandes abdimmen
-
-        // Ordered Dithering + Quantisierung (6 Stufen)
-        const levels = 6;
-        const dthr = (bayerThreshold(x,y) - 0.5) * 0.20; // Stärke des Ditherings
-        let q = intensity + dthr;
-        q = Math.max(0, Math.min(1, q));
-        const step = Math.round(q * (levels-1)) / (levels-1);
-
-        // Farbrampe anwenden
-        const col = ramp(step);
-        r = r*0.35 + col[0]*0.85;
-        g = g*0.35 + col[1]*0.85;
-        b = b*0.45 + col[2]*0.85;
-
-        // Posterization für stärkeren Pixel-Eindruck
-        const pstep = 12; r=Math.round(r/pstep)*pstep; g=Math.round(g/pstep)*pstep; b=Math.round(b/pstep)*pstep;
-
-        d[i]=r; d[i+1]=g; d[i+2]=b; d[i+3]=255;
-      }
+      raf = requestAnimationFrame(frame);
     }
 
-    btx.putImageData(img,0,0);
-
-    // Buffer pixelig „cover“ skalieren
-    const sR = BUF_W / BUF_H;
-    let dw=W, dh=Math.round(W/sR); if(dh<H){ dh=H; dw=Math.round(H*sR); }
-    const dx=Math.round((W-dw)/2), dy=Math.round((H-dh)/2);
-    wtx.imageSmoothingEnabled=false;
-    wtx.drawImage(buf,0,0,BUF_W,BUF_H, dx,dy,dw,dh);
-
-    requestAnimationFrame(render);
-  }
-  requestAnimationFrame(render);
-});
-</script>
+    function start(){
+      if(!raf) raf = requestAnimationFrame(frame);
+    }
+  })();
+  </script>
 </body>
 </html>
