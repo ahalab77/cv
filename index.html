@@ -45,13 +45,13 @@
     imgWater.src  = IMG_WATER;
     imgPlants.src = IMG_PLANTS;
 
-    // Offscreen-Canvas für Spiegeltext
+    // Offscreen-Canvas für Spiegeltext (kleiner!)
     const textCanvas = document.createElement("canvas");
     const txtx = textCanvas.getContext("2d");
-    textCanvas.width = 512;
-    textCanvas.height = 128;
+    textCanvas.width = 256;
+    textCanvas.height = 64;
     txtx.fillStyle="#fff";
-    txtx.font="bold 80px sans-serif";
+    txtx.font="bold 36px sans-serif";   // kleiner
     txtx.textAlign="center";
     txtx.textBaseline="middle";
     txtx.fillText("alexhatchl", textCanvas.width/2, textCanvas.height/2);
@@ -96,15 +96,14 @@
           cover.sx+shift,sy,cover.sw,1,
           0,y,buf.width,1
         );
-
-        // Spiegeltext (als Verzerrung sichtbar)
-        const textY = Math.floor(buf.height*0.6);
-        if(y===textY){
-          bufx.globalAlpha=0.15; // sehr subtil
-          bufx.drawImage(textCanvas, buf.width/2-256, textY-64, 512,128);
-          bufx.globalAlpha=1.0;
-        }
       }
+
+      // Spiegeltext einfügen (klein, in der Mitte)
+      const textX = buf.width/2 - textCanvas.width/2;
+      const textY = Math.floor(buf.height*0.5 - textCanvas.height/2);
+      bufx.globalAlpha=0.15; // sehr subtil
+      bufx.drawImage(textCanvas, textX, textY);
+      bufx.globalAlpha=1.0;
 
       // Buffer → Canvas
       const sR=buf.width/buf.height;
