@@ -10,22 +10,23 @@
   <link rel="stylesheet" href="https://webslides.tv/static/css/svg-icons.css" />
 
   <style>
-    #water-intro{
+    #intro{
       position:relative !important;
       min-height:100vh !important;
       height:100vh !important;
       overflow:hidden;
-      background:#06071a;
+      background:#0a0c20;
     }
-    #water-intro canvas{
+    #intro canvas{
       position:absolute; inset:0; width:100%; height:100%;
       display:block; image-rendering:pixelated; image-rendering:crisp-edges;
     }
-    #water-intro .overlay{
-      position:relative; z-index:3; height:100%;
-      display:grid; place-items:center; color:#fff;
-      text-shadow:0 2px 6px rgba(0,0,0,.7);
-      font-size:3.5rem;
+    #intro .overlay{
+      position:relative; z-index:4; height:100%;
+      display:grid; place-items:center; color:#ffffff;
+      text-shadow:0 2px 6px rgba(0,0,0,.8);
+      font-size:3.8rem; letter-spacing:.06em;
+      pointer-events:none;
     }
   </style>
 </head>
@@ -34,9 +35,9 @@
   <article id="webslides">
 
     <!-- SLIDE 1 -->
-    <section class="fullscreen aligncenter" id="water-intro">
-      <canvas id="water-canvas"></canvas>
-      <canvas id="plants-canvas"></canvas>
+    <section class="fullscreen aligncenter" id="intro">
+      <canvas id="water"></canvas>
+      <canvas id="plants"></canvas>
       <div class="overlay">alexhatchl</div>
     </section>
 
@@ -49,94 +50,192 @@
 window.addEventListener('load', () => {
   window.ws = new WebSlides();
 
-  const water = document.getElementById("water-canvas");
-  const plants = document.getElementById("plants-canvas");
-  const wtx = water.getContext("2d");
-  const ptx = plants.getContext("2d");
+  const cWater  = document.getElementById('water');
+  const cPlants = document.getElementById('plants');
+  const wtx = cWater.getContext('2d', {alpha:false, desynchronized:true});
+  const ptx = cPlants.getContext('2d', {alpha:true});
   wtx.imageSmoothingEnabled = false;
   ptx.imageSmoothingEnabled = false;
 
   function fit(){
     const W = innerWidth, H = innerHeight;
-    water.width=W; water.height=H;
-    plants.width=W; plants.height=H;
+    cWater.width=W; cWater.height=H;
+    cPlants.width=W; cPlants.height=H;
+    // sichtbarer Erstframe
+    wtx.fillStyle = '#0c1030'; wtx.fillRect(0,0,W,H);
+    drawPlants();
   }
   fit();
-  addEventListener("resize", fit, {passive:true});
+  addEventListener('resize', fit, {passive:true});
+  document.addEventListener('ws:slide-change', fit);
 
-  // -------------------- Pflanzen-Silhouetten --------------------
+  // --------- Pflanzen-Silhouetten (dicht, links/rechts) ----------
+  function leaf(ptx, x, y, len, width, tilt){
+    ptx.save();
+    ptx.translate(x,y);
+    ptx.rotate(tilt);
+    ptx.beginPath();
+    ptx.moveTo(0,0);
+    ptx.quadraticCurveTo(width, -len*0.35, 0, -len);
+    ptx.quadraticCurveTo(-width, -len*0.35, 0, 0);
+    ptx.closePath();
+    ptx.fill();
+    ptx.restore();
+  }
+  function stem(ptx, x1,y1, x2,y2, w){
+    ptx.beginPath();
+    ptx.moveTo(x1,y1);
+    ptx.quadraticCurveTo((x1+x2)/2 + (Math.random()*40-20), (y1+y2)/2, x2,y2);
+    ptx.lineWidth = w;
+    ptx.stroke();
+  }
   function drawPlants(){
-    const W=plants.width, H=plants.height;
+    const W = cPlants.width, H = cPlants.height;
     ptx.clearRect(0,0,W,H);
-    ptx.fillStyle="#000";
-    ptx.globalAlpha=0.9;
+    ptx.fillStyle   = '#000';
+    ptx.strokeStyle = '#000';
+    ptx.globalAlpha = 0.98;
 
-    // einfache Silhouetten per Path2D (linke Seite)
-    const leftPlant = new Path2D();
-    leftPlant.moveTo(W*0.1,H);
-    leftPlant.lineTo(W*0.08,H*0.7);
-    leftPlant.quadraticCurveTo(W*0.05,H*0.5,W*0.1,H*0.4);
-    leftPlant.lineTo(W*0.12,H*0.7);
-    leftPlant.lineTo(W*0.1,H);
-    ptx.fill(leftPlant);
-
-    // rechte Seite
-    const rightPlant = new Path2D();
-    rightPlant.moveTo(W*0.9,H);
-    rightPlant.lineTo(W*0.92,H*0.6);
-    rightPlant.quadraticCurveTo(W*0.96,H*0.4,W*0.9,H*0.3);
-    rightPlant.lineTo(W*0.88,H*0.65);
-    rightPlant.lineTo(W*0.9,H);
-    ptx.fill(rightPlant);
-
-    // mehrere vertikale Stängel mit Blättern
-    for(let i=0;i<7;i++){
-      const baseX = (i<4)? W*0.05+ i*20 : W*0.85+ (i-4)*20;
-      const baseY = H;
-      const topY = H*0.3 + Math.random()*H*0.3;
-      ptx.beginPath();
-      ptx.moveTo(baseX,baseY);
-      ptx.quadraticCurveTo(baseX-20, (baseY+topY)/2, baseX, topY);
-      ptx.strokeStyle="#000";
-      ptx.lineWidth=6;
-      ptx.stroke();
+    // linke Büsche
+    for(let i=0;i<8;i++){
+      const baseX = W*0.02 + i*W*0.02;
+      const baseY = H*(0.65 + Math.random()*0.35);
+      const topY  = baseY - H*(0.15 + Math.random()*0.25);
+      stem(ptx, baseX, H, baseX+Math.random()*40, topY, 6);
+      for(let b=0;b<6;b++){
+        const yy = topY + (H*0.02)*b + Math.random()*18;
+        const xx = baseX + (Math.random()*40 - 20);
+        leaf(ptx, xx, yy, 60+Math.random()*60, 18+Math.random()*12, -0.3+Math.random()*0.6);
+      }
+    }
+    // rechte Büsche
+    for(let i=0;i<8;i++){
+      const baseX = W*(0.98 - i*0.02);
+      const baseY = H*(0.65 + Math.random()*0.35);
+      const topY  = baseY - H*(0.15 + Math.random()*0.25);
+      stem(ptx, baseX, H, baseX-Math.random()*40, topY, 6);
+      for(let b=0;b<6;b++){
+        const yy = topY + (H*0.02)*b + Math.random()*18;
+        const xx = baseX + (Math.random()*40 - 20);
+        leaf(ptx, xx, yy, 60+Math.random()*60, 18+Math.random()*12, -0.3+Math.random()*0.6);
+      }
     }
   }
-  drawPlants();
 
-  // -------------------- Wasser + Reflexe --------------------
-  const buf = document.createElement("canvas");
-  const btx = buf.getContext("2d");
-  const BUF_W = 240;
-  let BUF_H = 135;
+  // --------- Wasser: horizontale, gebrochene Lichtbänder ---------
+  const buf = document.createElement('canvas');
+  const btx = buf.getContext('2d', {alpha:false});
+  btx.imageSmoothingEnabled = false;
 
-  function render(t){
-    const W=water.width, H=water.height;
-    BUF_H = Math.round(BUF_W*H/W);
-    buf.width=BUF_W; buf.height=BUF_H;
+  const BUF_W = 224; // bewusst klein → grober Pixel-Look
+  let   BUF_H = 126;
+
+  // 4×4 Bayer-Matrix (Ordered Dithering)
+  const bayer4 = [
+    [ 0,  8,  2, 10],
+    [12,  4, 14,  6],
+    [ 3, 11,  1,  9],
+    [15,  7, 13,  5]
+  ];
+  function bayerThreshold(x,y){ return (bayer4[y&3][x&3] + 0.5)/16; }
+
+  // simple hash noise + smoothed noise
+  function hnoise(x,y){ let n=Math.sin(x*127.1+y*311.7)*43758.5453; return n-Math.floor(n); }
+  function snoise(x,y){
+    const xi=Math.floor(x), yi=Math.floor(y);
+    const xf=x-xi, yf=y-yi;
+    const n00=hnoise(xi,yi), n10=hnoise(xi+1,yi), n01=hnoise(xi,yi+1), n11=hnoise(xi+1,yi+1);
+    const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf);
+    return ( (n00*(1-u)+n10*u)*(1-v) + (n01*(1-u)+n11*u)*v );
+  }
+
+  // Farbrampe: 0..1 → deep blue → violet → magenta → orange → yellow
+  function ramp(t){
+    t = Math.max(0, Math.min(1, t));
+    const stops = [
+      {t:0.00, c:[10,12,30]},
+      {t:0.35, c:[28,20,60]},
+      {t:0.60, c:[180,36,90]},
+      {t:0.80, c:[255,130,60]},
+      {t:1.00, c:[255,240,160]}
+    ];
+    let a=stops[0].c, b=stops[stops.length-1].c, ta=0, tb=1;
+    for(let i=0;i<stops.length-1;i++){
+      if(t>=stops[i].t && t<=stops[i+1].t){ a=stops[i].c; b=stops[i+1].c; ta=stops[i].t; tb=stops[i+1].t; break; }
+    }
+    const k=(t-ta)/(tb-ta+1e-6);
+    return [ a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k, a[2]+(b[2]-a[2])*k ];
+  }
+
+  function render(now){
+    const t = now*0.001;
+    const W = cWater.width, H = cWater.height;
+    BUF_H = Math.max(80, Math.round(BUF_W * H / W));
+    buf.width = BUF_W; buf.height = BUF_H;
+
     const img = btx.getImageData(0,0,BUF_W,BUF_H);
-    const d = img.data;
+    const d   = img.data;
 
+    // Mittelpunkt (wo die Sonne spiegelt)
+    const y0 = BUF_H*0.45;
+    const sigma = BUF_H*0.18; // vertikale Ausdehnung der Reflexe
+
+    // 1D-Noise-Felder entlang x, y moduliert → gebrochene Bänder
     for(let y=0;y<BUF_H;y++){
+      const fy = (y - y0) / sigma;
+      const envelope = Math.exp(-0.5*fy*fy); // hell in Bandmitte, dunkler oben/unten
+
       for(let x=0;x<BUF_W;x++){
-        const i=(y*BUF_W+x)*4;
-        const ny=y/BUF_H, nx=x/BUF_W;
-        // Basis Wasserfarbe
-        let r=8, g=10, b=32;
-        // horizontale Streifen (Reflexe)
-        const wave = Math.sin(nx*80 + t*0.003) + Math.sin(nx*50 - t*0.002);
-        const mask = Math.sin(y*0.3 + t*0.004 + wave*0.5);
-        if(mask>0.6){
-          const glow = (mask-0.6)*3.5;
-          r=200+55*Math.random(); g=50+glow*150; b=80+glow*60;
-        }
+        const i = (y*BUF_W + x)*4;
+
+        // Basis – dunkles Wasser
+        let r=12, g=14, b=36;
+
+        // mehrere Frequenzen, seitlicher Drift
+        const nx = x/BUF_W, ny = y/BUF_H;
+        const n1 = snoise(nx*40 + t*0.8,  ny*2.0 - t*0.15);
+        const n2 = snoise(nx*90 - t*1.6,  ny*3.0 + t*0.10);
+        const n3 = snoise(nx*180+ t*2.4,  7.3);
+        // zusammengesetztes Feld
+        let signal = 0.55*n1 + 0.30*n2 + 0.15*n3;
+
+        // Schwelle – in der Mitte leichter zu „zünden“
+        const threshold = 0.15 - 0.25*envelope;
+        let intensity = signal - threshold;
+
+        // Clip + Power für schmale, helle Highlights
+        intensity = Math.max(0, intensity);
+        intensity = Math.pow(intensity, 3.0);
+
+        // zufällige Mikrounterbrechungen (körnig)
+        const jitter = (hnoise(x*5.7, y*3.1 + t*0.7) - 0.5) * 0.08;
+        intensity = Math.max(0, intensity + jitter);
+        intensity *= envelope; // außerhalb des Bandes abdimmen
+
+        // Ordered Dithering + Quantisierung (6 Stufen)
+        const levels = 6;
+        const dthr = (bayerThreshold(x,y) - 0.5) * 0.20; // Stärke des Ditherings
+        let q = intensity + dthr;
+        q = Math.max(0, Math.min(1, q));
+        const step = Math.round(q * (levels-1)) / (levels-1);
+
+        // Farbrampe anwenden
+        const col = ramp(step);
+        r = r*0.35 + col[0]*0.85;
+        g = g*0.35 + col[1]*0.85;
+        b = b*0.45 + col[2]*0.85;
+
+        // Posterization für stärkeren Pixel-Eindruck
+        const pstep = 12; r=Math.round(r/pstep)*pstep; g=Math.round(g/pstep)*pstep; b=Math.round(b/pstep)*pstep;
+
         d[i]=r; d[i+1]=g; d[i+2]=b; d[i+3]=255;
       }
     }
+
     btx.putImageData(img,0,0);
 
-    // Buffer → Canvas scaled
-    const sR=BUF_W/BUF_H;
+    // Buffer pixelig „cover“ skalieren
+    const sR = BUF_W / BUF_H;
     let dw=W, dh=Math.round(W/sR); if(dh<H){ dh=H; dw=Math.round(H*sR); }
     const dx=Math.round((W-dw)/2), dy=Math.round((H-dh)/2);
     wtx.imageSmoothingEnabled=false;
