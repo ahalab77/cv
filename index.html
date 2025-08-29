@@ -15,7 +15,8 @@
       position:relative !important;
       min-height:100vh !important;
       height:100vh !important;
-      overflow:hidden; background:#081424;
+      overflow:hidden;
+      background:#081424; /* dunkelblaues Grund-Backdrop */
     }
     #lake-intro .stage{
       position:absolute; inset:0; width:100%; height:100%;
@@ -24,13 +25,14 @@
     #lake-intro .overlay{
       position:relative; z-index:3; height:100%;
       display:grid; place-items:center; color:#e9f2ff;
-      text-shadow: 0 2px 6px rgba(0,0,0,.6);
+      text-shadow:0 2px 6px rgba(0,0,0,.6);
       pointer-events:none;
     }
     #lake-intro h1{ margin:0; font-size:4rem; letter-spacing:.08em; }
     #lake-intro .hint{
       position:absolute; left:24px; bottom:20px; z-index:4; color:#9fb6d4; opacity:.8;
-      font: 12px/1.2 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+      font:12px/1.2 ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial;
+      pointer-events:none;
     }
     @media (max-width:720px){ #lake-intro h1{ font-size:2.6rem; } }
   </style>
@@ -43,10 +45,10 @@
     <section class="fullscreen aligncenter" id="lake-intro">
       <canvas id="lake-canvas" class="stage" aria-hidden="true"></canvas>
       <div class="overlay"><h1>alexhatchl</h1></div>
-      <div class="hint">⬅︎ / ➝  —  P: Palette wechseln · G: Grain</div>
+      <div class="hint">P: Palette · G: Grain</div>
     </section>
 
-    <!-- (weitere Slides kannst du später anhängen) -->
+    <!-- weitere Slides kannst du später anhängen -->
 
   </article>
 </main>
@@ -55,271 +57,193 @@
 <script src="https://webslides.tv/static/js/webslides.js" defer></script>
 
 <script defer>
-/* =========================================================
-   Pixel-Lake (blue cinematic) — generativ, performant
-   — robust für WebSlides (Init nach load, IO zum Start/Stop)
-   ========================================================= */
 window.addEventListener('load', () => {
+  // WebSlides initialisieren
   window.ws = new WebSlides();
 
+  // ----- Setup Canvas (robust) -----
   const section = document.getElementById('lake-intro');
   const cvs = document.getElementById('lake-canvas');
-  const ctx = cvs.getContext('2d', { alpha: false, desynchronized:true });
+  const ctx = cvs.getContext('2d', { alpha:false, desynchronized:true });
   ctx.imageSmoothingEnabled = false;
 
-  // Offscreen Low-Res Buffer für den Pixel-Look
-  const BUF_W = 256;              // „Arbeitsbreite“ (pixelig)
-  let   BUF_H = 144;              // wird auf Seitenverhältnis angepasst
-  const buf = document.createElement('canvas');
-  const btx = buf.getContext('2d', { alpha:false });
+  // Offscreen-Buffer für Pixeloptik
+  const BUF_W_BASE = 256;
+  let buf = document.createElement('canvas');
+  let btx = buf.getContext('2d', {alpha:false});
   btx.imageSmoothingEnabled = false;
 
-  // Steuerung & Look
+  // Controls
   let raf = null;
-  let startT = performance.now();
-  let paletteMode = 0;  // 0 = Blau Cinematic, 1 = Nacht/Teal
+  let t0  = performance.now();
+  let paletteMode = 0;   // 0 = Blue Cinematic, 1 = Teal Night
   let showGrain   = true;
 
-  // Farbpaletten (8-Bit Steps) – bewusst reduziert = Pixel-Ästhetik
   const palettes = [
-    // „Blue Cinematic Dusk“
-    {
-      skyTop:   [10, 24, 56],
-      skyMid:   [22, 48, 100],
-      skyBot:   [46, 86, 140],
-      sun:      [255, 220, 170],
-      sunHalo:  [150, 200, 255],
-      waterTop: [20, 40, 80],
-      waterBot: [10, 22, 46],
-      mountain: [18, 34, 64],
-      vignette: [0, 10, 26]
+    { // Blue Cinematic
+      skyTop:[10,24,56], skyMid:[22,48,100], skyBot:[46,86,140],
+      sun:[255,220,170], sunHalo:[150,200,255],
+      waterTop:[20,40,80], waterBot:[10,22,46],
+      mountain:[18,34,64], vignette:[0,10,26]
     },
-    // „Teal Nightfall“
-    {
-      skyTop:   [6, 18, 30],
-      skyMid:   [12, 38, 58],
-      skyBot:   [20, 70, 92],
-      sun:      [210, 235, 255],
-      sunHalo:  [130, 200, 230],
-      waterTop: [14, 34, 46],
-      waterBot: [6, 16, 26],
-      mountain: [10, 28, 40],
-      vignette: [0, 8, 18]
+    { // Teal Night
+      skyTop:[6,18,30], skyMid:[12,38,58], skyBot:[20,70,92],
+      sun:[210,235,255], sunHalo:[130,200,230],
+      waterTop:[14,34,46], waterBot:[6,16,26],
+      mountain:[10,28,40], vignette:[0,8,18]
     }
   ];
 
-  // Utilities
-  const clamp = (v, a, b) => v < a ? a : (v > b ? b : v);
-  const lerp  = (a, b, t) => a + (b - a) * t;
-  const mix3  = (a, b, t) => [ lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t) ];
-  function setPixel(data, i, r,g,b){
-    data[i]   = r|0; data[i+1] = g|0; data[i+2] = b|0; data[i+3] = 255;
-  }
-  // Simple „hash noise“ (schnell & deterministisch)
-  function hnoise(x, y){
-    let n = Math.sin(x * 127.1 + y * 311.7) * 43758.5453;
-    return n - Math.floor(n);
-  }
-  // Smoothed noise (2D)
-  function snoise(x, y){
-    const xi = Math.floor(x), yi = Math.floor(y);
-    const xf = x - xi,        yf = y - yi;
-    // 4 Ecken
-    const n00 = hnoise(xi,   yi);
-    const n10 = hnoise(xi+1, yi);
-    const n01 = hnoise(xi,   yi+1);
-    const n11 = hnoise(xi+1, yi+1);
-    const u = xf*xf*(3 - 2*xf);
-    const v = yf*yf*(3 - 2*yf);
-    return lerp( lerp(n00, n10, u), lerp(n01, n11, u), v );
+  // Utils
+  const clamp=(v,a,b)=>v<a?a:v>b?b:v;
+  const lerp=(a,b,t)=>a+(b-a)*t;
+  const mix3=(a,b,t)=>[lerp(a[0],b[0],t), lerp(a[1],b[1],t), lerp(a[2],b[2],t)];
+  function setPixel(d,i,r,g,b){ d[i]=r|0; d[i+1]=g|0; d[i+2]=b|0; d[i+3]=255; }
+  function hnoise(x,y){ let n=Math.sin(x*127.1+y*311.7)*43758.5453; return n-Math.floor(n); }
+  function snoise(x,y){
+    const xi=Math.floor(x), yi=Math.floor(y);
+    const xf=x-xi, yf=y-yi;
+    const n00=hnoise(xi,yi), n10=hnoise(xi+1,yi), n01=hnoise(xi,yi+1), n11=hnoise(xi+1,yi+1);
+    const u=xf*xf*(3-2*xf), v=yf*yf*(3-2*yf);
+    return lerp( lerp(n00,n10,u), lerp(n01,n11,u), v );
   }
 
-  // Größe setzen
   function fit(){
-    const r = section.getBoundingClientRect();
-    const W = Math.max(2, Math.floor(r.width));
-    const H = Math.max(2, Math.floor(r.height));
-    cvs.width  = W; cvs.height = H;
+    // Größe NIEMALS von der Section nehmen (könnte 0 sein) → Viewport
+    const W = Math.max(2, window.innerWidth);
+    const H = Math.max(2, window.innerHeight);
+    if (cvs.width!==W)  cvs.width=W;
+    if (cvs.height!==H) cvs.height=H;
 
-    // Buffer proportional ~16:9
-    BUF_H = Math.max(64, Math.round(BUF_W * (H/W)));
-    buf.width  = BUF_W;
-    buf.height = BUF_H;
+    const bufW = BUF_W_BASE;
+    const bufH = Math.max(64, Math.round(bufW * (H/W))); // 16:9-ish
+    buf.width  = bufW;
+    buf.height = bufH;
+
+    // Sichtbarer Erst-Frame (Debug: helles Blau) → du siehst SOFORT was
+    ctx.fillStyle = '#0e2a5a';
+    ctx.fillRect(0,0,W,H);
   }
+  fit();
+  window.addEventListener('resize', fit, {passive:true});
+  document.addEventListener('ws:slide-change', fit);
 
-  // Haupt-Renderer (pro Frame): malt in Buffer, skaliert dann auf Vollbild
   function render(now){
-    const t = (now - startT) * 0.001; // Sekunden
+    const dt = (now - t0)*0.001;
     const pal = palettes[paletteMode];
 
     const w = buf.width, h = buf.height;
     const img = btx.getImageData(0,0,w,h);
-    const d   = img.data;
+    const d = img.data;
 
-    // Horizonte & Parameter
-    const horizon = Math.floor(h * 0.48);
-    const sunX = w * 0.5;
-    const sunY = horizon + Math.sin(t * 0.2) * 2; // minimal „atmen“
-    const sunR = Math.max(6, Math.floor(h * 0.065)); // Sonnenscheibe (klein, filmisch)
+    const horizon = Math.floor(h*0.48);
+    const sunX = w*0.5;
+    const sunY = horizon + Math.sin(dt*0.2)*2;
+    const sunR = Math.max(6, Math.floor(h*0.065));
 
-    // Sky Gradient
-    for(let y=0; y<horizon; y++){
-      const ny = y / Math.max(1, horizon-1);
-      // oben dunkler, nach unten heller (leicht ins Cyan)
-      const base = (ny < 0.5)
-        ? mix3(pal.skyTop, pal.skyMid, ny*2)
-        : mix3(pal.skyMid, pal.skyBot, (ny-0.5)*2);
-
-      for(let x=0; x<w; x++){
-        const i = (y*w + x) * 4;
-
-        // sanfter Halo um die Sonne
-        const dx = x - sunX, dy = y - sunY;
-        const dist = Math.sqrt(dx*dx + dy*dy);
-        let col = base;
-        if(dist < sunR*3.0){
-          const glow = clamp(1 - dist/(sunR*3.0), 0, 1);
-          col = mix3(col, pal.sunHalo, Math.pow(glow, 2) * 0.6);
+    // Himmel
+    for(let y=0;y<horizon;y++){
+      const ny = y/Math.max(1,horizon-1);
+      const base = (ny<0.5) ? mix3(pal.skyTop,pal.skyMid,ny*2)
+                            : mix3(pal.skyMid,pal.skyBot,(ny-0.5)*2);
+      for(let x=0;x<w;x++){
+        const i=(y*w+x)*4;
+        const dx=x-sunX, dy=y-sunY, dist=Math.sqrt(dx*dx+dy*dy);
+        let col=base;
+        if(dist<sunR*3){
+          const glow = clamp(1-dist/(sunR*3),0,1);
+          col = mix3(col, pal.sunHalo, Math.pow(glow,2)*0.6);
         }
-        // Sonnenscheibe
-        if(dist < sunR){
-          const k = 1 - (dist/sunR);
-          col = mix3(pal.sun, [255,255,255], Math.pow(k, 6)*0.2);
+        if(dist<sunR){
+          const k=1-dist/sunR;
+          col = mix3(pal.sun,[255,255,255], Math.pow(k,6)*0.2);
         }
-
-        setPixel(d, i, col[0], col[1], col[2]);
+        setPixel(d,i,col[0],col[1],col[2]);
       }
     }
 
-    // Mountains (Silhouetten)
-    for(let y=horizon-1; y<h; y++){
-      const ny = (y - horizon) / (h - horizon);
-      for(let x=0; x<w; x++){
-        const i = (y*w + x) * 4;
-        // zwei Layer Berge mit Noise-Profil
-        const m1 = 0.22 + snoise(x*0.035, 12.3) * 0.06 + snoise(x*0.12, 2.1) * 0.02;
-        const m2 = 0.28 + snoise(x*0.018, 4.7)  * 0.08;
-        const height1 = horizon - m1*h;  // Bildschirm-Y der ersten Kette
-        const height2 = horizon - m2*h;  // zweite Kette
-
+    // Berge
+    for(let y=horizon-1;y<h;y++){
+      const ny=(y-horizon)/(h-horizon);
+      for(let x=0;x<w;x++){
+        const i=(y*w+x)*4;
+        const m1 = 0.22 + snoise(x*0.035,12.3)*0.06 + snoise(x*0.12,2.1)*0.02;
+        const m2 = 0.28 + snoise(x*0.018,4.7)*0.08;
+        const h1 = horizon - m1*h, h2 = horizon - m2*h;
         let col;
-        if (y < height2){
-          // Himmel (bereits gemalt) – nichts tun
-          continue;
-        } else if (y < height1){
-          col = [ pal.mountain[0]*0.9, pal.mountain[1]*0.9, pal.mountain[2]*0.9 ];
-        } else {
-          col = pal.mountain;
-        }
-        // bisschen Dunst je tiefer
-        const haze = clamp(ny*0.4, 0, 0.4);
+        if (y < h2){ continue; }
+        else if (y < h1){ col=[pal.mountain[0]*0.9,pal.mountain[1]*0.9,pal.mountain[2]*0.9]; }
+        else { col=pal.mountain; }
+        const haze = clamp(ny*0.4,0,0.4);
         col = mix3(col, pal.skyBot, haze);
-
-        setPixel(d, i, col[0], col[1], col[2]);
+        setPixel(d,i,col[0],col[1],col[2]);
       }
-      if(y >= horizon) break; // ab hier übernimmt der See
+      if(y>=horizon) break;
     }
 
-    // Lake (Spiegelung + Wellen)
-    for(let y=horizon; y<h; y++){
-      const yy = y - horizon;
-      const v = yy / (h - horizon + 1e-5);
-
-      for(let x=0; x<w; x++){
-        const i = (y*w + x) * 4;
-
-        // Koordinaten für „Spiegelung“ mit Wellen-Offset
-        const wave =
-          Math.sin((x*0.06) + t*2.0) * 0.8 +
-          Math.sin((x*0.018) - t*1.2) * 1.2 +
-          (snoise(x*0.08, t*0.8) - 0.5) * 2.2;
-
+    // See (Reflexion + Wellen)
+    for(let y=horizon;y<h;y++){
+      const yy=y-horizon, v=yy/(h-horizon+1e-5);
+      for(let x=0;x<w;x++){
+        const i=(y*w+x)*4;
+        const wave = Math.sin(x*0.06+dt*2)*0.8 + Math.sin(x*0.018-dt*1.2)*1.2 + (snoise(x*0.08,dt*0.8)-0.5)*2.2;
         const refY = clamp(Math.floor(horizon - (yy + wave)), 0, horizon-1);
-        const refI = (refY*w + x) * 4;
+        const j=(refY*w+x)*4;
 
-        // Grundfarbe = reflektierter Himmel, dann bläuliche Wasserfärbung
-        let r = d[refI], g = d[refI+1], b = d[refI+2];
-        const waterTint = mix3(pal.waterTop, pal.waterBot, v);
-        r = lerp(r, waterTint[0], 0.55);
-        g = lerp(g, waterTint[1], 0.55);
-        b = lerp(b, waterTint[2], 0.65);
+        let r=d[j], g=d[j+1], b=d[j+2];
+        const tint = mix3(pal.waterTop,pal.waterBot,v);
+        r=lerp(r,tint[0],0.55); g=lerp(g,tint[1],0.55); b=lerp(b,tint[2],0.65);
 
-        // Glanzstreifen/Reflex der Sonne (vertikal etwas aufgefächert)
-        const sx = Math.abs(x - sunX) / w;
-        const gloss = Math.exp(-sx*sx*140.0) * (1.0 - v) * 0.85;
-        r = lerp(r, 255, gloss*0.75);
-        g = lerp(g, 235, gloss*0.55);
-        b = lerp(b, 215, gloss*0.35);
+        const sx=Math.abs(x - w*0.5)/w;
+        const gloss = Math.exp(-sx*sx*140)*(1.0-v)*0.85;
+        r=lerp(r,255,gloss*0.75); g=lerp(g,235,gloss*0.55); b=lerp(b,215,gloss*0.35);
 
-        // Pixel-Quantisierung (cineastisch: leichte Tonwert-Posterization)
-        const step = 16; // 256/16 = 16 Stufen
-        r = Math.round(r/step)*step;
-        g = Math.round(g/step)*step;
-        b = Math.round(b/step)*step;
-
-        setPixel(d, i, r, g, b);
+        const step=16; r=Math.round(r/step)*step; g=Math.round(g/step)*step; b=Math.round(b/step)*step;
+        setPixel(d,i,r,g,b);
       }
     }
 
-    // Vignette + dezentes Filmgrain
-    const cx = w*0.5, cy = h*0.52;
-    for(let y=0; y<h; y++){
-      for(let x=0; x<w; x++){
-        const i = (y*w + x) * 4;
-        const dx = (x - cx)/(w*0.5);
-        const dy = (y - cy)/(h*0.6);
-        const fall = clamp(dx*dx + dy*dy, 0, 1);
-        const vig = Math.pow(fall, 1.3) * 0.6;
-        d[i]   = lerp(d[i],   palettes[paletteMode].vignette[0], vig);
-        d[i+1] = lerp(d[i+1], palettes[paletteMode].vignette[1], vig);
-        d[i+2] = lerp(d[i+2], palettes[paletteMode].vignette[2], vig);
+    // Vignette + Grain
+    const cx=w*0.5, cy=h*0.52;
+    for(let y=0;y<h;y++){
+      for(let x=0;x<w;x++){
+        const i=(y*w+x)*4;
+        const dx=(x-cx)/(w*0.5), dy=(y-cy)/(h*0.6);
+        const fall=clamp(dx*dx+dy*dy,0,1);
+        const vig=Math.pow(fall,1.3)*0.6;
+        d[i]  = lerp(d[i],  palettes[paletteMode].vignette[0], vig);
+        d[i+1]= lerp(d[i+1],palettes[paletteMode].vignette[1], vig);
+        d[i+2]= lerp(d[i+2],palettes[paletteMode].vignette[2], vig);
 
         if(showGrain){
-          const n = (hnoise(x*3.73 + y*1.91, (now*0.0007)) - 0.5) * 10; // ±5
-          d[i]   = clamp(d[i]   + n, 0, 255);
-          d[i+1] = clamp(d[i+1] + n, 0, 255);
-          d[i+2] = clamp(d[i+2] + n, 0, 255);
+          const n=(hnoise(x*3.73+y*1.91, now*0.0007)-0.5)*10;
+          d[i]  = clamp(d[i]  + n, 0, 255);
+          d[i+1]= clamp(d[i+1]+ n, 0, 255);
+          d[i+2]= clamp(d[i+2]+ n, 0, 255);
         }
       }
     }
 
-    btx.putImageData(img, 0, 0);
+    btx.putImageData(img,0,0);
 
-    // Buffer pixelig als „cover“ auf den Vollbild-Canvas
-    const W = cvs.width, H = cvs.height;
+    // Buffer → Vollbild (cover, ohne smoothing)
+    const W=cvs.width, H=cvs.height, sR=buf.width/buf.height;
+    let dw=W, dh=Math.round(W/sR); if(dh<H){ dh=H; dw=Math.round(H*sR); }
+    const dx=Math.round((W-dw)/2), dy=Math.round((H-dh)/2);
     ctx.imageSmoothingEnabled = false;
-    // cover: skaliere so, dass alles gefüllt ist (Seitenverhältnis beachten)
-    const sR = buf.width / buf.height;
-    let dw = W, dh = Math.round(W / sR);
-    if (dh < H){ dh = H; dw = Math.round(H * sR); }
-    const dx = Math.round((W - dw) / 2), dy = Math.round((H - dh) / 2);
-    ctx.drawImage(buf, 0, 0, buf.width, buf.height, dx, dy, dw, dh);
+    ctx.drawImage(buf,0,0,buf.width,buf.height,dx,dy,dw,dh);
 
     raf = requestAnimationFrame(render);
   }
 
-  // Start/Stop nur wenn die Slide sichtbar ist → spart CPU
-  const io = new IntersectionObserver((entries)=>{
-    entries.forEach(e=>{
-      if(e.isIntersecting){
-        fit();
-        if(!raf) raf = requestAnimationFrame(render);
-      }else{
-        if(raf){ cancelAnimationFrame(raf); raf = null; }
-      }
-    });
-  }, {threshold: 0.2});
-  io.observe(section);
-
-  // Reflow/Fit wenn WebSlides die Slide wechselt
-  document.addEventListener('ws:slide-change', fit);
-  window.addEventListener('resize', fit, {passive:true});
+  // Sofort starten (kein IO/Timing-Risiko)
+  if(!raf){ raf = requestAnimationFrame(render); }
 
   // kleine Interaktionen
   window.addEventListener('keydown', (e)=>{
-    const k = e.key.toLowerCase();
-    if(k === 'p'){ paletteMode = (paletteMode+1) % palettes.length; }
-    if(k === 'g'){ showGrain = !showGrain; }
+    const k=e.key.toLowerCase();
+    if(k==='p') paletteMode=(paletteMode+1)%palettes.length;
+    if(k==='g') showGrain=!showGrain;
   });
 });
 </script>
