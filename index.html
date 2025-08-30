@@ -28,7 +28,7 @@
     #waterCanvas  { z-index: 0; }
     #plantsCanvas { z-index: 1; }
 
-    /* Overlay-Text nur Platzhalter (unsichtbar) */
+    /* Overlay-Text (Platzhalter, unsichtbar) */
     #slide-water .title-overlay {
       position: relative; z-index: 2;
       height: 100%; display: grid; place-items: center;
@@ -63,7 +63,7 @@
       <div class="title-overlay"><h1>alexhatchl</h1></div>
     </section>
 
-    <!-- SLIDE 2 – Dummy-Inhalt -->
+    <!-- SLIDE 2 – Dummy-Inhalt (Navigation sicher sichtbar) -->
     <section class="aligncenter">
       <div class="wrap">
         <h2>Weiter</h2>
@@ -100,28 +100,23 @@ document.addEventListener('DOMContentLoaded', () => {
   // Bilder
   const imgWater  = new Image();
   const imgPlants = new Image();
-  imgWater.crossOrigin = 'anonymous';
-  imgPlants.crossOrigin = 'anonymous';
-
-  let waterReady=false, plantsReady=false, showMask=true;
+  let waterReady=false, plantsReady=false, showMask=true, debugGreen=false, outline=false;
 
   imgWater.onload  = () => { waterReady = true; fit(); start(); };
+  imgWater.onerror = () => { showBadge('⚠︎ BG_1.png nicht gefunden'); };
   imgPlants.onload = () => { plantsReady = true; fit(); drawPlants(); };
-  imgPlants.onerror = () => {
-    console.error('BG_MASK.png konnte nicht geladen werden:', IMG_PLANTS);
-    showMask = false;
-    showBadge('⚠︎ BG_MASK.png nicht gefunden');
-  };
+  imgPlants.onerror = () => { showBadge('⚠︎ BG_MASK.png nicht gefunden'); showMask = false; };
 
+  // Cache-Buster gegen Pages-Caching
   imgWater.src  = IMG_WATER  + '?v=' + Date.now();
   imgPlants.src = IMG_PLANTS + '?v=' + Date.now();
 
   // Spiegeltext (≈30% kleiner, türkis, halbtransparent)
   const textCanvas = document.createElement('canvas');
   const txtx = textCanvas.getContext('2d');
-  textCanvas.width = 180;
+  textCanvas.width = 180;  // kleiner
   textCanvas.height = 46;
-  txtx.fillStyle = 'rgba(64, 224, 208, 0.6)';
+  txtx.fillStyle = 'rgba(64, 224, 208, 0.6)'; // Türkis transparent
   txtx.font = 'bold 24px sans-serif';
   txtx.textAlign = 'center';
   txtx.textBaseline = 'middle';
@@ -139,14 +134,15 @@ document.addEventListener('DOMContentLoaded', () => {
     cWater.width  = w; cWater.height  = h;
     cPlants.width = w; cPlants.height = h;
 
-    const px = (Math.min(w,h) < 820) ? 3 : 4;
+    const px = (Math.min(w,h) < 820) ? 3 : 4;  // Pixelgröße
     buf.width  = Math.ceil(w / px);
     buf.height = Math.ceil(h / px);
 
+    // Erstframe-Hintergrund
     wtx.fillStyle = '#0a0c20';
     wtx.fillRect(0,0,w,h);
 
-    drawPlants();
+    drawPlants(); // sicher: bei jedem Fit neu
   }
 
   // ResizeObserver / Fallback
@@ -159,15 +155,13 @@ document.addEventListener('DOMContentLoaded', () => {
   } catch { window.addEventListener('resize', fit, { passive:true }); }
   window.addEventListener('ws:slide-change', fit, { passive:true });
 
-  // Pflanzen-Maske
+  // Pflanzen-Maske (sichtbar erzwingen)
   function drawPlants() {
     const W = cPlants.width, H = cPlants.height;
     ptx.clearRect(0,0,W,H);
     if (!showMask || !plantsReady) return;
 
-    ptx.globalCompositeOperation = 'source-over';
-    ptx.globalAlpha = 1;
-
+    // 1) PNG platzieren (Cover)
     const sW = imgPlants.naturalWidth  || imgPlants.width;
     const sH = imgPlants.naturalHeight || imgPlants.height;
     const sR = sW / sH, dR = W / H;
@@ -175,7 +169,22 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dh < H) { dh=H; dw=Math.round(H*sR); }
     const dx = Math.round((W - dw)/2), dy = Math.round((H - dh)/2);
 
-    ptx.drawImage(imgPlants, 0,0,sW,sH, dx,dy,dw,dh);
+    // Optional: weicher Rand (sichtbarer Kontrast)
+    if (outline) {
+      ptx.save();
+      ptx.shadowColor = 'rgba(0,0,0,0.9)';
+      ptx.shadowBlur = 6;
+      ptx.drawImage(imgPlants, 0,0,sW,sH, dx,dy,dw,dh);
+      ptx.restore();
+    } else {
+      ptx.drawImage(imgPlants, 0,0,sW,sH, dx,dy,dw,dh);
+    }
+
+    // 2) Auf deckendes Schwarz färben (falls PNG halbtransparent / grau ist)
+    ptx.globalCompositeOperation = 'source-in';
+    ptx.fillStyle = debugGreen ? 'rgba(0,255,140,0.8)' : 'rgba(0,0,0,1)';
+    ptx.fillRect(0,0,W,H);
+    ptx.globalCompositeOperation = 'source-over';
   }
 
   function coverRect(srcW, srcH, dstW, dstH) {
@@ -222,7 +231,7 @@ document.addEventListener('DOMContentLoaded', () => {
     wtx.imageSmoothingEnabled = false;
     wtx.drawImage(buf, 0,0, buf.width, buf.height, dx,dy,dw,dh);
 
-    // Pflanzen oben drauf
+    // Pflanzen oben drauf (bei jedem Frame, damit es bei Zoom/Pixelgröße passt)
     drawPlants();
 
     raf = requestAnimationFrame(frame);
@@ -230,9 +239,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function start(){ if (!raf) raf = requestAnimationFrame(frame); }
 
-  // Debug: Maske toggeln
+  // Debug-Tasten:
+  // M = Maske an/aus, G = Grün einfärben (Sichtbarkeitstest), O = Outline/Rand
   window.addEventListener('keydown', (e)=>{
-    if (e.key.toLowerCase() === 'm') { showMask = !showMask; drawPlants(); }
+    const k = e.key.toLowerCase();
+    if (k === 'm') { showMask = !showMask; drawPlants(); }
+    if (k === 'g') { debugGreen = !debugGreen; drawPlants(); }
+    if (k === 'o') { outline = !outline; drawPlants(); }
   });
 
   // Badge für Fehlermeldungen
@@ -241,7 +254,7 @@ document.addEventListener('DOMContentLoaded', () => {
     el.textContent = text;
     Object.assign(el.style, {
       position:'fixed', left:'12px', bottom:'12px',
-      background:'rgba(0,0,0,.6)', color:'#fff',
+      background:'rgba(0,0,0,.65)', color:'#fff',
       padding:'6px 10px', borderRadius:'6px',
       font:'12px system-ui, sans-serif', zIndex: 2000
     });
