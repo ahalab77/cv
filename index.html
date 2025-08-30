@@ -3,34 +3,24 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Mondrian — Pixel Motion</title>
+  <title>alexhatchl — kinetic grid</title>
+  <!-- pixelige Schrift -->
+  <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
   <style>
-    html,body{height:100%;margin:0;background:#f4f4f4;color:#111;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
-    /* Vollbild-Canvas mit echter Pixeloptik */
+    html,body{height:100%;margin:0;background:#f4f4f4}
     canvas#stage{
       position:fixed; inset:0; width:100vw; height:100vh;
       image-rendering: pixelated; image-rendering: crisp-edges; display:block;
     }
-    /* kleine Hilfe unten links */
-    .hud{
-      position:fixed; left:12px; bottom:12px; padding:6px 10px; border-radius:8px;
-      background:rgba(0,0,0,.55); color:#fff; font-size:12px; line-height:1.35; z-index:10;
-      user-select:none
-    }
-    .hud kbd{background:#111;padding:1px 5px;border-radius:4px;font:600 11px/1 ui-monospace,Menlo,Consolas,monospace}
   </style>
 </head>
 <body>
 
 <canvas id="stage"></canvas>
-<div class="hud">
-  <strong>Mondrian – Pixel Motion</strong><br>
-  <kbd>R</kbd> neues Layout · <kbd>C</kbd> neu färben · <kbd>B</kbd> Pixelgröße · <kbd>Space</kbd> Pause
-</div>
 
 <script>
 (() => {
-  // ====== Bühne & Pixel-Buffer =================================================
+  // ===== Bühne & Pixel-Buffer =====
   const view  = document.getElementById('stage');
   const vtx   = view.getContext('2d', {alpha:false, desynchronized:true});
   vtx.imageSmoothingEnabled = false;
@@ -39,14 +29,13 @@
   const btx   = buf.getContext('2d', {alpha:false});
   btx.imageSmoothingEnabled = false;
 
-  let PIX = 4;                    // Pixelgröße (vergrößerter Rasterlook)
+  let PIX = 4;            // Pixelgröße (Raster-Look)
   let paused = false;
 
   function resize(){
     view.width  = Math.max(2, Math.floor(window.innerWidth));
     view.height = Math.max(2, Math.floor(window.innerHeight));
     const d = Math.min(view.width, view.height);
-    // etwas adaptiv, damit es auf Phones gröber wird
     PIX = d < 800 ? 3 : 4;
     buf.width  = Math.ceil(view.width  / PIX);
     buf.height = Math.ceil(view.height / PIX);
@@ -54,50 +43,50 @@
   window.addEventListener('resize', resize, {passive:true});
   resize();
 
-  // ====== Mondrian-Parameter ===================================================
+  // ===== Farbpalette =====
   const COLORS = {
-    white: '#FFFFFF',
-    red:   '#E6432E',
-    yellow:'#F4D21F',
-    blue:  '#1A3D9A',
-    black: '#111111'
+    white:  '#FFFFFF',
+    red:    '#E6432E',
+    yellow: '#F4D21F',
+    blue:   '#1A3D9A',
+    black:  '#111111'
   };
+  const PALETTE = [COLORS.white, COLORS.red, COLORS.yellow, COLORS.blue];
 
   function pickColor(){
-    // viel Weiß, dann Rot/Gelb/Blau – gewichtet
     const r = Math.random();
     if (r < 0.64) return COLORS.white;
     if (r < 0.80) return COLORS.red;
     if (r < 0.92) return COLORS.yellow;
     return COLORS.blue;
   }
+  function otherColor(base){
+    // wähle eine Palettenfarbe, die NICHT base ist
+    const choices = PALETTE.filter(c => c !== base);
+    return choices[(Math.random() * choices.length) | 0];
+  }
 
-  // Linien & Zellen
+  // ===== Layout (Linien, Zellen) =====
   let vLines, hLines, vCur, vTarget, hCur, hTarget, cells;
 
   function seedLayout(){
-    // Anzahlen vertikal/horizontal
-    const nV = 3 + Math.floor(Math.random()*3); // 3..5 Zwischenräume -> 4..6 Linien inkl. Rand
+    const nV = 3 + Math.floor(Math.random()*3); // 3..5 Zwischenräume
     const nH = 3 + Math.floor(Math.random()*3);
 
-    // innere Linien (0..1 ausschließen – die kommen als Rahmen dazu)
     const randPos = (n) => {
       const s = new Set();
       while (s.size < n){
-        const x = 0.12 + Math.random()*0.76; // 0.12 .. 0.88
+        const x = 0.12 + Math.random()*0.76;
         s.add(Math.round(x*1000)/1000);
       }
       return Array.from(s).sort((a,b)=>a-b);
     };
-
     vLines = [0, ...randPos(nV), 1];
     hLines = [0, ...randPos(nH), 1];
-
-    // aktuelle & Zielpositionen (separat für sanftes Gleiten)
     vCur = vLines.slice(); vTarget = vLines.slice();
     hCur = hLines.slice(); hTarget = hLines.slice();
 
-    // Zellenfarben initialisieren
+    // Zellenfarben
     cells = [];
     for (let j=0; j<hLines.length-1; j++){
       const row = [];
@@ -106,6 +95,9 @@
       }
       cells.push(row);
     }
+
+    // Textzeile neu binden
+    bindTextRow();
   }
 
   function recolor(){
@@ -118,81 +110,126 @@
 
   seedLayout();
 
-  // ====== Mechanischer, gekoppelter Takt ======================================
-  const MIN_GAP = 0.08;      // Mindestabstand zwischen Linien (in Normkoordinaten)
-  const STEP    = 0.04;      // Basisschritt pro „Nudge“
-  const COUPLE  = 0.55;      // Kopplungsstärke auf Nachbarn
-  const EASE    = 0.14;      // Annäherung pro Frame an Ziel (mechanisch-gedämpft)
+  // ===== Mechanischer Takt (gekoppelt) =====
+  const MIN_GAP = 0.08;
+  const STEP    = 0.04;
+  const COUPLE  = 0.55;
+  const EASE    = 0.14;
 
   let nextBeatA = 0, nextBeatB = 0;
-  function scheduleBeats(t){
-    // Zwei überlagerte „Uhren“ für harmonisch-zufälligen Puls
-    const A = 0.85 + (Math.random()*0.16 - 0.08);   // ~0.85 s ±
-    const B = 1.38 + (Math.random()*0.22 - 0.11);   // ~1.38 s ±
-    nextBeatA = t + A;
-    nextBeatB = t + B;
-  }
 
-  function nudge(lines, target, index, dir){
-    // verschiebe eine innere Linie und kopple Nachbarn
+  function nudge(target, index, dir){
     const i = index;
     const left  = i-1, right = i+1;
-    // Grenzwerte (Nachbar + Mindestabstand)
     const minX = target[left]  + MIN_GAP;
     const maxX = target[right] - MIN_GAP;
     const step = dir * STEP;
-
     target[i] = clamp(target[i] + step, minX, maxX);
-
-    // Nachbarn mitnehmen, gedämpft
     if (left>0){
       const lmin = target[left-1] + MIN_GAP;
       const lmax = target[i]      - MIN_GAP;
       target[left] = clamp(target[left] + step*COUPLE, lmin, lmax);
     }
     if (right < target.length-1){
-      const rmin = target[i]        + MIN_GAP;
-      const rmax = target[right+1]  - MIN_GAP;
+      const rmin = target[i]       + MIN_GAP;
+      const rmax = target[right+1] - MIN_GAP;
       target[right] = clamp(target[right] + step*COUPLE, rmin, rmax);
     }
   }
 
   function beat(){
-    // wähle zufällig vertikal ODER horizontal
-    const isV = Math.random() < 0.5;
-    const tgt = isV ? vTarget : hTarget;
-    if (tgt.length <= 2) return;
-
-    // index einer inneren Linie (1..len-2), Richtung ±1
-    const idx = 1 + Math.floor(Math.random()*(tgt.length-2));
-    const dir = Math.random() < 0.5 ? -1 : 1;
-    nudge(isV ? vLines : hLines, tgt, idx, dir);
-
-    // optional: kleine Farbakzente im Takt
-    if (Math.random() < 0.18) recolor();
-  }
-
-  // ====== Zeichnen ============================================================
-  function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
-
-  function lerpTowards(cur, tgt, k){
-    let maxDelta = 0;
-    for (let i=0; i<cur.length; i++){
-      const delta = (tgt[i] - cur[i]) * k;
-      cur[i] += delta;
-      const ad = Math.abs(delta);
-      if (ad > maxDelta) maxDelta = ad;
+    // verschiebe zufällig eine vertikale oder horizontale Linie
+    if (Math.random() < 0.5){
+      if (vTarget.length>2){
+        const idx = 1 + Math.floor(Math.random()*(vTarget.length-2));
+        const dir = Math.random()<0.5 ? -1 : 1;
+        nudge(vTarget, idx, dir);
+      }
+    } else {
+      if (hTarget.length>2){
+        const idx = 1 + Math.floor(Math.random()*(hTarget.length-2));
+        const dir = Math.random()<0.5 ? -1 : 1;
+        nudge(hTarget, idx, dir);
+      }
     }
-    return maxDelta;
+    // gelegentlich Farben auffrischen
+    if (Math.random() < 0.18) recolor();
+    // und Textgruppen variieren
+    if (Math.random() < 0.9) mutateGroups();
   }
 
-  function drawMondrian(){
+  // ===== „alexhatchl“ in dynamischen Gruppen entlang einer Zeile =====
+  const WORD = 'alexhatchl';
+  let textRowIndex = 0;     // welche Zeile (0..rows-1) – wird bei Layout neu gebunden
+  let groups = [];          // Array<string> – z. B. ["al","e","x","ha","t","chl"]
+
+  function bindTextRow(){
+    // nimm mittlere Zeile
+    const rows = hLines.length - 1;
+    textRowIndex = Math.max(0, Math.min(rows-1, Math.floor(rows/2)));
+    // initiale Gruppierung: grob in Singles
+    groups = WORD.split('');
+    fitGroupsToCols();
+  }
+
+  function fitGroupsToCols(){
+    const cols = vLines.length - 1;
+    // zu viele Gruppen → zusammenführen
+    while (groups.length > cols){
+      // merge zwei benachbarte zufällig
+      const i = 1 + Math.floor(Math.random() * (groups.length-1));
+      groups[i-1] = groups[i-1] + groups[i];
+      groups.splice(i,1);
+    }
+    // zu wenige Gruppen → irgendwo splitten
+    while (groups.length < cols){
+      // wähle eine Gruppe mit len>1
+      const idx = groups.findIndex(g => g.length>1);
+      if (idx === -1){ groups.push(''); break; }
+      const g = groups[idx];
+      const cut = 1 + Math.floor(Math.random()*(g.length-1));
+      const a = g.slice(0,cut), b = g.slice(cut);
+      groups.splice(idx,1,a,b);
+    }
+  }
+
+  function mutateGroups(){
+    const cols = vLines.length - 1;
+    if (groups.length <= 1 || Math.random()<0.5){
+      // splitte eine zufällige Gruppe (mit Länge>1)
+      const idxs = groups.map((g,i)=>g.length>1?i:-1).filter(i=>i>=0);
+      if (idxs.length){
+        const i = idxs[(Math.random()*idxs.length)|0];
+        const g = groups[i];
+        const cut = 1 + Math.floor(Math.random()*(g.length-1));
+        const a = g.slice(0,cut), b = g.slice(cut);
+        groups.splice(i,1,a,b);
+      }
+    } else {
+      // merge zwei benachbarte
+      if (groups.length>=2){
+        const i = 1 + Math.floor(Math.random()*(groups.length-1));
+        groups[i-1] = groups[i-1] + groups[i];
+        groups.splice(i,1);
+      }
+    }
+    fitGroupsToCols();
+  }
+
+  // ===== Zeichnen =====
+  function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
+  function lerpTowards(cur, tgt, k){
+    for (let i=0; i<cur.length; i++){
+      cur[i] += (tgt[i] - cur[i]) * k;
+    }
+  }
+
+  function draw(){
     const W = buf.width, H = buf.height;
-    // Hintergrund leicht „papierweiß“ für Mondrian-Feeling
     btx.fillStyle = '#F6F6F6';
     btx.fillRect(0,0,W,H);
 
-    // Rechtecke füllen
+    // Flächen
     for (let j=0; j<hCur.length-1; j++){
       const y0 = Math.round(hCur[j]   * H);
       const y1 = Math.round(hCur[j+1] * H);
@@ -204,8 +241,37 @@
       }
     }
 
-    // Schwarze Linien oben drauf
-    const L = Math.max(2, Math.round(Math.min(W,H) * 0.008)); // Linienbreite
+    // Textzeile
+    const cols = vCur.length - 1;
+    if (groups.length !== cols) fitGroupsToCols();
+    const ry0 = Math.round(hCur[textRowIndex]   * H);
+    const ry1 = Math.round(hCur[textRowIndex+1] * H);
+    const rcy = Math.floor((ry0 + ry1)/2);       // vertikale Mitte der Zeile
+
+    // kleine, kantige Schrift
+    const px = Math.max(1, Math.round(Math.min(W,H) * 0.012)); // ~8px auf Desktop
+    btx.save();
+    btx.imageSmoothingEnabled = false;
+    btx.font = `${px}px "Press Start 2P", ui-monospace, monospace`;
+    btx.textAlign = 'center';
+    btx.textBaseline = 'middle';
+
+    for (let i=0; i<cols; i++){
+      const g = groups[i] || '';
+      if (!g) continue;
+      const x0 = Math.round(vCur[i]   * W);
+      const x1 = Math.round(vCur[i+1] * W);
+      const cx = Math.floor((x0 + x1)/2);
+
+      // Farbe ≠ Kastenfarbe
+      const base = cells[textRowIndex][i];
+      btx.fillStyle = otherColor(base);
+      btx.fillText(g, cx, rcy);
+    }
+    btx.restore();
+
+    // Linien
+    const L = Math.max(2, Math.round(Math.min(W,H) * 0.008));
     btx.fillStyle = COLORS.black;
     for (let i=0; i<vCur.length; i++){
       const x = Math.round(vCur[i] * W) - Math.floor(L/2);
@@ -216,41 +282,35 @@
       btx.fillRect(0, y, W, L);
     }
 
-    // Buffer → Bildschirm (vergrößert, pixelig)
+    // Buffer → Viewport
     vtx.imageSmoothingEnabled = false;
     vtx.clearRect(0,0,view.width,view.height);
     vtx.drawImage(buf, 0,0, W,H, 0,0, view.width, view.height);
   }
 
-  // ====== Loop ================================================================
+  // ===== Loop =====
   let t0 = performance.now();
-  scheduleBeats(0);
-
   function loop(now){
     if (!paused){
-      const t = (now - t0) / 1000;
-
-      // Linie(n) an Ziel annähern – mechanisch/gedämpft
+      const t = (now - t0)/1000;
       lerpTowards(vCur, vTarget, EASE);
       lerpTowards(hCur, hTarget, EASE);
-
-      // Beats abfeuern (zwei Uhren)
+      // zwei überlagerte Takte
       if (t >= nextBeatA){ beat(); nextBeatA = t + (0.85 + (Math.random()*0.16 - 0.08)); }
       if (t >= nextBeatB){ beat(); nextBeatB = t + (1.38 + (Math.random()*0.22 - 0.11)); }
-
-      drawMondrian();
+      draw();
     }
     requestAnimationFrame(loop);
   }
   requestAnimationFrame(loop);
 
-  // ====== Shortcuts ===========================================================
+  // ===== Shortcuts (keine Legende angezeigt) =====
   window.addEventListener('keydown', (e)=>{
     const k = e.key.toLowerCase();
-    if (k === ' '){ paused = !paused; }                         // Pause
-    if (k === 'r'){ seedLayout(); }                             // neues Layout
-    if (k === 'c'){ recolor(); }                                // neue Farben
-    if (k === 'b'){                                             // Pixelgröße ändern
+    if (k === ' '){ paused = !paused; }
+    if (k === 'r'){ seedLayout(); }
+    if (k === 'c'){ recolor(); }
+    if (k === 'b'){
       PIX = (PIX === 4) ? 6 : (PIX === 6 ? 3 : 4);
       buf.width  = Math.ceil(view.width  / PIX);
       buf.height = Math.ceil(view.height / PIX);
