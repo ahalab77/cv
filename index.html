@@ -3,258 +3,260 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>alexhatchl — portfolio</title>
-
-  <!-- WebSlides CSS -->
-  <link rel="stylesheet" href="https://webslides.tv/static/css/webslides.css" />
-  <link rel="stylesheet" href="https://webslides.tv/static/css/svg-icons.css" />
-
+  <title>Mondrian — Pixel Motion</title>
   <style>
-    /* ===== Slide 1: Bühne ===== */
-    #slide-water {
-      position: relative;
-      overflow: hidden;
-      background: #0a0c20;
-      min-height: 100vh;
+    html,body{height:100%;margin:0;background:#f4f4f4;color:#111;font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    /* Vollbild-Canvas mit echter Pixeloptik */
+    canvas#stage{
+      position:fixed; inset:0; width:100vw; height:100vh;
+      image-rendering: pixelated; image-rendering: crisp-edges; display:block;
     }
-    #slide-water .stage {
-      position: absolute; inset: 0;
-      width: 100%; height: 100%;
-      display: block;
-      image-rendering: pixelated;
-      image-rendering: crisp-edges;
-      pointer-events: none;
+    /* kleine Hilfe unten links */
+    .hud{
+      position:fixed; left:12px; bottom:12px; padding:6px 10px; border-radius:8px;
+      background:rgba(0,0,0,.55); color:#fff; font-size:12px; line-height:1.35; z-index:10;
+      user-select:none
     }
-    #waterCanvas  { z-index: 0; }
-    #plantsCanvas { z-index: 1; }
-
-    #slide-water .title-overlay {
-      position: relative; z-index: 2;
-      height: 100%; display: grid; place-items: center;
-      pointer-events: none;
-    }
-    #slide-water .title-overlay h1 {
-      margin: 0; opacity: 0; color:#fff;
-      font-size: clamp(28px, 6vw, 64px);
-      text-shadow: 0 2px 6px rgba(0,0,0,.85);
-      letter-spacing: .06em;
-      font-weight: 400;
-    }
-
-    /* ===== WebSlides-UI immer sichtbar ===== */
-    .ws-controls,
-    .ws-progress,
-    .ws-prev,
-    .ws-next { z-index: 1000 !important; opacity: 1 !important; visibility: visible !important; }
-    .ws-progress { background: rgba(255,255,255,.15) !important; }
-    .ws-progress .indicator { background: #fff !important; }
+    .hud kbd{background:#111;padding:1px 5px;border-radius:4px;font:600 11px/1 ui-monospace,Menlo,Consolas,monospace}
   </style>
 </head>
 <body>
 
-<main role="main">
-  <article id="webslides">
-
-    <!-- SLIDE 1 -->
-    <section id="slide-water" class="fullscreen aligncenter">
-      <canvas id="waterCanvas"  class="stage" aria-hidden="true"></canvas>
-      <canvas id="plantsCanvas" class="stage" aria-hidden="true"></canvas>
-      <div class="title-overlay"><h1>alexhatchl</h1></div>
-    </section>
-
-    <!-- SLIDE 2 -->
-    <section class="aligncenter">
-      <div class="wrap">
-        <h2>Weiter</h2>
-        <p>Hier könnte dein Portfolio folgen …</p>
-      </div>
-    </section>
-
-  </article>
-</main>
-
-<!-- WebSlides JS -->
-<script src="https://webslides.tv/static/js/webslides.js"></script>
-<script>window.ws = new WebSlides();</script>
+<canvas id="stage"></canvas>
+<div class="hud">
+  <strong>Mondrian – Pixel Motion</strong><br>
+  <kbd>R</kbd> neues Layout · <kbd>C</kbd> neu färben · <kbd>B</kbd> Pixelgröße · <kbd>Space</kbd> Pause
+</div>
 
 <script>
-document.addEventListener('DOMContentLoaded', () => {
-  const IMG_WATER  = 'images/BG_1.png';
-  const IMG_PLANTS = 'images/BG_MASK.png';
+(() => {
+  // ====== Bühne & Pixel-Buffer =================================================
+  const view  = document.getElementById('stage');
+  const vtx   = view.getContext('2d', {alpha:false, desynchronized:true});
+  vtx.imageSmoothingEnabled = false;
 
-  const section  = document.getElementById('slide-water') || document.body;
-  const cWater   = document.getElementById('waterCanvas');
-  const cPlants  = document.getElementById('plantsCanvas');
-  const wtx = cWater.getContext('2d', { alpha:false, desynchronized:true });
-  const ptx = cPlants.getContext('2d');
-  wtx.imageSmoothingEnabled = false;
-  ptx.imageSmoothingEnabled = false;
+  const buf   = document.createElement('canvas');
+  const btx   = buf.getContext('2d', {alpha:false});
+  btx.imageSmoothingEnabled = false;
 
-  const buf  = document.createElement('canvas');
-  const bufx = buf.getContext('2d', { alpha:false });
-  bufx.imageSmoothingEnabled = false;
+  let PIX = 4;                    // Pixelgröße (vergrößerter Rasterlook)
+  let paused = false;
 
-  const imgWater  = new Image();
-  const imgPlants = new Image();
-  imgWater.crossOrigin = 'anonymous';
-  imgPlants.crossOrigin = 'anonymous';
-  let waterReady=false, plantsReady=false;
-  let showMask=true, debugGreen=false, outline=false, invertMask=false;
+  function resize(){
+    view.width  = Math.max(2, Math.floor(window.innerWidth));
+    view.height = Math.max(2, Math.floor(window.innerHeight));
+    const d = Math.min(view.width, view.height);
+    // etwas adaptiv, damit es auf Phones gröber wird
+    PIX = d < 800 ? 3 : 4;
+    buf.width  = Math.ceil(view.width  / PIX);
+    buf.height = Math.ceil(view.height / PIX);
+  }
+  window.addEventListener('resize', resize, {passive:true});
+  resize();
 
-  imgWater.onload  = () => { waterReady = true; fit(); start(); };
-  imgWater.onerror = () => { showBadge('⚠︎ BG_1.png nicht gefunden'); };
-  imgPlants.onload = () => { plantsReady = true; fit(); drawPlants(); };
-  imgPlants.onerror = () => { showBadge('⚠︎ BG_MASK.png nicht gefunden'); showMask = false; };
+  // ====== Mondrian-Parameter ===================================================
+  const COLORS = {
+    white: '#FFFFFF',
+    red:   '#E6432E',
+    yellow:'#F4D21F',
+    blue:  '#1A3D9A',
+    black: '#111111'
+  };
 
-  imgWater.src  = IMG_WATER  + '?v=' + Date.now();
-  imgPlants.src = IMG_PLANTS + '?v=' + Date.now();
-
-  // Text (deckend blau, kleiner)
-  const textCanvas = document.createElement('canvas');
-  const txtx = textCanvas.getContext('2d');
-  textCanvas.width = 180;
-  textCanvas.height = 46;
-  txtx.fillStyle = '#2EA0FF'; // volldeckendes Blau
-  txtx.font = 'bold 24px sans-serif';
-  txtx.textAlign = 'center';
-  txtx.textBaseline = 'middle';
-  txtx.fillText('alexhatchl', textCanvas.width/2, textCanvas.height/2);
-
-  function getBox() {
-    const r = section && section.getBoundingClientRect ? section.getBoundingClientRect() : null;
-    const w = r && r.width  ? Math.floor(r.width)  : window.innerWidth;
-    const h = r && r.height ? Math.floor(r.height) : window.innerHeight;
-    return { w: Math.max(2,w), h: Math.max(2,h) };
+  function pickColor(){
+    // viel Weiß, dann Rot/Gelb/Blau – gewichtet
+    const r = Math.random();
+    if (r < 0.64) return COLORS.white;
+    if (r < 0.80) return COLORS.red;
+    if (r < 0.92) return COLORS.yellow;
+    return COLORS.blue;
   }
 
-  function fit() {
-    const { w, h } = getBox();
-    cWater.width  = w; cWater.height  = h;
-    cPlants.width = w; cPlants.height = h;
+  // Linien & Zellen
+  let vLines, hLines, vCur, vTarget, hCur, hTarget, cells;
 
-    const px = (Math.min(w,h) < 820) ? 3 : 4;
-    buf.width  = Math.ceil(w / px);
-    buf.height = Math.ceil(h / px);
+  function seedLayout(){
+    // Anzahlen vertikal/horizontal
+    const nV = 3 + Math.floor(Math.random()*3); // 3..5 Zwischenräume -> 4..6 Linien inkl. Rand
+    const nH = 3 + Math.floor(Math.random()*3);
 
-    wtx.fillStyle = '#0a0c20';
-    wtx.fillRect(0,0,w,h);
+    // innere Linien (0..1 ausschließen – die kommen als Rahmen dazu)
+    const randPos = (n) => {
+      const s = new Set();
+      while (s.size < n){
+        const x = 0.12 + Math.random()*0.76; // 0.12 .. 0.88
+        s.add(Math.round(x*1000)/1000);
+      }
+      return Array.from(s).sort((a,b)=>a-b);
+    };
 
-    drawPlants();
-  }
+    vLines = [0, ...randPos(nV), 1];
+    hLines = [0, ...randPos(nH), 1];
 
-  try {
-    if (section && section instanceof Element) {
-      new ResizeObserver(() => fit()).observe(section);
-    } else {
-      window.addEventListener('resize', fit, { passive:true });
+    // aktuelle & Zielpositionen (separat für sanftes Gleiten)
+    vCur = vLines.slice(); vTarget = vLines.slice();
+    hCur = hLines.slice(); hTarget = hLines.slice();
+
+    // Zellenfarben initialisieren
+    cells = [];
+    for (let j=0; j<hLines.length-1; j++){
+      const row = [];
+      for (let i=0; i<vLines.length-1; i++){
+        row.push(pickColor());
+      }
+      cells.push(row);
     }
-  } catch { window.addEventListener('resize', fit, { passive:true }); }
-  window.addEventListener('ws:slide-change', fit, { passive:true });
-
-  function drawPlants() {
-    const W = cPlants.width, H = cPlants.height;
-    ptx.clearRect(0,0,W,H);
-    if (!showMask || !plantsReady) return;
-
-    const sW = imgPlants.naturalWidth  || imgPlants.width;
-    const sH = imgPlants.naturalHeight || imgPlants.height;
-    const sR = sW / sH, dR = W / H;
-    let dw=W, dh=Math.round(W/sR);
-    if (dh < H) { dh=H; dw=Math.round(H*sR); }
-    const dx = Math.round((W - dw)/2), dy = Math.round((H - dh)/2);
-
-    if (outline) {
-      ptx.save();
-      ptx.shadowColor = 'rgba(0,0,0,0.9)';
-      ptx.shadowBlur = 6;
-      ptx.drawImage(imgPlants, 0,0,sW,sH, dx,dy,dw,dh);
-      ptx.restore();
-    } else {
-      ptx.drawImage(imgPlants, 0,0,sW,sH, dx,dy,dw,dh);
-    }
-
-    if (!invertMask) {
-      ptx.globalCompositeOperation = 'source-in';
-      ptx.fillStyle = debugGreen ? 'rgba(0,255,140,0.9)' : '#000';
-      ptx.fillRect(0,0,W,H);
-    } else {
-      ptx.globalCompositeOperation = 'source-over';
-      ptx.fillStyle = debugGreen ? 'rgba(0,255,140,0.9)' : '#000';
-      ptx.fillRect(0,0,W,H);
-      ptx.globalCompositeOperation = 'destination-out';
-      ptx.drawImage(imgPlants, 0,0,sW,sH, dx,dy,dw,dh);
-    }
-    ptx.globalCompositeOperation = 'source-over';
   }
 
-  function coverRect(srcW, srcH, dstW, dstH) {
-    const sR = srcW/srcH, dR = dstW/dstH;
-    let sw, sh, sx, sy;
-    if (sR > dR) { sh = srcH; sw = Math.round(sh * dR); sx = Math.round((srcW - sw)/2); sy = 0; }
-    else         { sw = srcW; sh = Math.round(sw / dR); sx = 0; sy = Math.round((srcH - sh)/2); }
-    return { sx, sy, sw, sh };
+  function recolor(){
+    for (let j=0; j<cells.length; j++){
+      for (let i=0; i<cells[j].length; i++){
+        if (Math.random() < 0.28) cells[j][i] = pickColor();
+      }
+    }
   }
 
-  let raf=null, t0=performance.now();
-  function frame(now) {
-    const t = (now - t0) * 0.001;
-    if (!waterReady) { raf = requestAnimationFrame(frame); return; }
+  seedLayout();
 
-    const W = cWater.width, H = cWater.height;
-    const sW = imgWater.naturalWidth  || imgWater.width;
-    const sH = imgWater.naturalHeight || imgWater.height;
-    const cover = coverRect(sW, sH, buf.width, buf.height);
+  // ====== Mechanischer, gekoppelter Takt ======================================
+  const MIN_GAP = 0.08;      // Mindestabstand zwischen Linien (in Normkoordinaten)
+  const STEP    = 0.04;      // Basisschritt pro „Nudge“
+  const COUPLE  = 0.55;      // Kopplungsstärke auf Nachbarn
+  const EASE    = 0.14;      // Annäherung pro Frame an Ziel (mechanisch-gedämpft)
 
-    for (let y=0; y<buf.height; y++) {
-      const sy = cover.sy + (y / buf.height) * cover.sh;
-      const shift = Math.sin(y/12 + t*0.9) * 6;
-      bufx.drawImage(
-        imgWater,
-        cover.sx + shift, Math.floor(sy), Math.max(1, cover.sw - Math.abs(shift)), 1,
-        0, y, buf.width, 1
-      );
+  let nextBeatA = 0, nextBeatB = 0;
+  function scheduleBeats(t){
+    // Zwei überlagerte „Uhren“ für harmonisch-zufälligen Puls
+    const A = 0.85 + (Math.random()*0.16 - 0.08);   // ~0.85 s ±
+    const B = 1.38 + (Math.random()*0.22 - 0.11);   // ~1.38 s ±
+    nextBeatA = t + A;
+    nextBeatB = t + B;
+  }
+
+  function nudge(lines, target, index, dir){
+    // verschiebe eine innere Linie und kopple Nachbarn
+    const i = index;
+    const left  = i-1, right = i+1;
+    // Grenzwerte (Nachbar + Mindestabstand)
+    const minX = target[left]  + MIN_GAP;
+    const maxX = target[right] - MIN_GAP;
+    const step = dir * STEP;
+
+    target[i] = clamp(target[i] + step, minX, maxX);
+
+    // Nachbarn mitnehmen, gedämpft
+    if (left>0){
+      const lmin = target[left-1] + MIN_GAP;
+      const lmax = target[i]      - MIN_GAP;
+      target[left] = clamp(target[left] + step*COUPLE, lmin, lmax);
+    }
+    if (right < target.length-1){
+      const rmin = target[i]        + MIN_GAP;
+      const rmax = target[right+1]  - MIN_GAP;
+      target[right] = clamp(target[right] + step*COUPLE, rmin, rmax);
+    }
+  }
+
+  function beat(){
+    // wähle zufällig vertikal ODER horizontal
+    const isV = Math.random() < 0.5;
+    const tgt = isV ? vTarget : hTarget;
+    if (tgt.length <= 2) return;
+
+    // index einer inneren Linie (1..len-2), Richtung ±1
+    const idx = 1 + Math.floor(Math.random()*(tgt.length-2));
+    const dir = Math.random() < 0.5 ? -1 : 1;
+    nudge(isV ? vLines : hLines, tgt, idx, dir);
+
+    // optional: kleine Farbakzente im Takt
+    if (Math.random() < 0.18) recolor();
+  }
+
+  // ====== Zeichnen ============================================================
+  function clamp(v, a, b){ return v < a ? a : (v > b ? b : v); }
+
+  function lerpTowards(cur, tgt, k){
+    let maxDelta = 0;
+    for (let i=0; i<cur.length; i++){
+      const delta = (tgt[i] - cur[i]) * k;
+      cur[i] += delta;
+      const ad = Math.abs(delta);
+      if (ad > maxDelta) maxDelta = ad;
+    }
+    return maxDelta;
+  }
+
+  function drawMondrian(){
+    const W = buf.width, H = buf.height;
+    // Hintergrund leicht „papierweiß“ für Mondrian-Feeling
+    btx.fillStyle = '#F6F6F6';
+    btx.fillRect(0,0,W,H);
+
+    // Rechtecke füllen
+    for (let j=0; j<hCur.length-1; j++){
+      const y0 = Math.round(hCur[j]   * H);
+      const y1 = Math.round(hCur[j+1] * H);
+      for (let i=0; i<vCur.length-1; i++){
+        const x0 = Math.round(vCur[i]   * W);
+        const x1 = Math.round(vCur[i+1] * W);
+        btx.fillStyle = cells[j][i];
+        btx.fillRect(x0, y0, x1-x0, y1-y0);
+      }
     }
 
-    const tx = Math.floor(buf.width/2  - textCanvas.width/2);
-    const ty = Math.floor(buf.height/2 - textCanvas.height/2);
-    bufx.globalAlpha = 1;
-    bufx.drawImage(textCanvas, tx, ty);
+    // Schwarze Linien oben drauf
+    const L = Math.max(2, Math.round(Math.min(W,H) * 0.008)); // Linienbreite
+    btx.fillStyle = COLORS.black;
+    for (let i=0; i<vCur.length; i++){
+      const x = Math.round(vCur[i] * W) - Math.floor(L/2);
+      btx.fillRect(x, 0, L, H);
+    }
+    for (let j=0; j<hCur.length; j++){
+      const y = Math.round(hCur[j] * H) - Math.floor(L/2);
+      btx.fillRect(0, y, W, L);
+    }
 
-    const sR = buf.width / buf.height;
-    let dw = W, dh = Math.round(W / sR);
-    if (dh < H) { dh = H; dw = Math.round(H * sR); }
-    const dx = Math.round((W - dw)/2), dy = Math.round((H - dh)/2);
-    wtx.imageSmoothingEnabled = false;
-    wtx.drawImage(buf, 0,0, buf.width, buf.height, dx,dy,dw,dh);
-
-    drawPlants();
-
-    raf = requestAnimationFrame(frame);
+    // Buffer → Bildschirm (vergrößert, pixelig)
+    vtx.imageSmoothingEnabled = false;
+    vtx.clearRect(0,0,view.width,view.height);
+    vtx.drawImage(buf, 0,0, W,H, 0,0, view.width, view.height);
   }
 
-  function start(){ if (!raf) raf = requestAnimationFrame(frame); }
+  // ====== Loop ================================================================
+  let t0 = performance.now();
+  scheduleBeats(0);
 
-  // Debug-Tasten
+  function loop(now){
+    if (!paused){
+      const t = (now - t0) / 1000;
+
+      // Linie(n) an Ziel annähern – mechanisch/gedämpft
+      lerpTowards(vCur, vTarget, EASE);
+      lerpTowards(hCur, hTarget, EASE);
+
+      // Beats abfeuern (zwei Uhren)
+      if (t >= nextBeatA){ beat(); nextBeatA = t + (0.85 + (Math.random()*0.16 - 0.08)); }
+      if (t >= nextBeatB){ beat(); nextBeatB = t + (1.38 + (Math.random()*0.22 - 0.11)); }
+
+      drawMondrian();
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // ====== Shortcuts ===========================================================
   window.addEventListener('keydown', (e)=>{
     const k = e.key.toLowerCase();
-    if (k === 'm') { showMask   = !showMask;   drawPlants(); }
-    if (k === 'g') { debugGreen = !debugGreen; drawPlants(); }
-    if (k === 'o') { outline    = !outline;    drawPlants(); }
-    if (k === 'i') { invertMask = !invertMask; drawPlants(); }
+    if (k === ' '){ paused = !paused; }                         // Pause
+    if (k === 'r'){ seedLayout(); }                             // neues Layout
+    if (k === 'c'){ recolor(); }                                // neue Farben
+    if (k === 'b'){                                             // Pixelgröße ändern
+      PIX = (PIX === 4) ? 6 : (PIX === 6 ? 3 : 4);
+      buf.width  = Math.ceil(view.width  / PIX);
+      buf.height = Math.ceil(view.height / PIX);
+    }
   });
-
-  function showBadge(text) {
-    const el = document.createElement('div');
-    el.textContent = text;
-    Object.assign(el.style, {
-      position:'fixed', left:'12px', bottom:'12px',
-      background:'rgba(0,0,0,.65)', color:'#fff',
-      padding:'6px 10px', borderRadius:'6px',
-      font:'12px system-ui, sans-serif', zIndex: 2000
-    });
-    document.body.appendChild(el);
-  }
-});
+})();
 </script>
 
 </body>
