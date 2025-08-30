@@ -23,12 +23,11 @@
       display: block;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
-      pointer-events: none;     /* Klicks gehen an WebSlides-UI */
+      pointer-events: none;
     }
     #waterCanvas  { z-index: 0; }
     #plantsCanvas { z-index: 1; }
 
-    /* Overlay-Text (Platzhalter, unsichtbar) */
     #slide-water .title-overlay {
       position: relative; z-index: 2;
       height: 100%; display: grid; place-items: center;
@@ -42,7 +41,7 @@
       font-weight: 400;
     }
 
-    /* ===== WebSlides-UI immer sichtbar über allem ===== */
+    /* ===== WebSlides-UI immer sichtbar ===== */
     .ws-controls,
     .ws-progress,
     .ws-prev,
@@ -63,11 +62,11 @@
       <div class="title-overlay"><h1>alexhatchl</h1></div>
     </section>
 
-    <!-- SLIDE 2 – Dummy-Inhalt (Navigation sicher sichtbar) -->
+    <!-- SLIDE 2 -->
     <section class="aligncenter">
       <div class="wrap">
         <h2>Weiter</h2>
-        <p>Hier folgt dein Portfolio-Content …</p>
+        <p>Hier könnte dein Portfolio folgen …</p>
       </div>
     </section>
 
@@ -79,7 +78,6 @@
 <script>window.ws = new WebSlides();</script>
 
 <script>
-/* ===== Animiertes Wasser + Pflanzen-Overlay + Spiegeltext ===== */
 document.addEventListener('DOMContentLoaded', () => {
   const IMG_WATER  = 'images/BG_1.png';
   const IMG_PLANTS = 'images/BG_MASK.png';
@@ -92,31 +90,31 @@ document.addEventListener('DOMContentLoaded', () => {
   wtx.imageSmoothingEnabled = false;
   ptx.imageSmoothingEnabled = false;
 
-  // Low-Res Buffer für Pixel-Look
   const buf  = document.createElement('canvas');
   const bufx = buf.getContext('2d', { alpha:false });
   bufx.imageSmoothingEnabled = false;
 
-  // Bilder
   const imgWater  = new Image();
   const imgPlants = new Image();
-  let waterReady=false, plantsReady=false, showMask=true, debugGreen=false, outline=false;
+  imgWater.crossOrigin = 'anonymous';
+  imgPlants.crossOrigin = 'anonymous';
+  let waterReady=false, plantsReady=false;
+  let showMask=true, debugGreen=false, outline=false, invertMask=false;
 
   imgWater.onload  = () => { waterReady = true; fit(); start(); };
   imgWater.onerror = () => { showBadge('⚠︎ BG_1.png nicht gefunden'); };
   imgPlants.onload = () => { plantsReady = true; fit(); drawPlants(); };
   imgPlants.onerror = () => { showBadge('⚠︎ BG_MASK.png nicht gefunden'); showMask = false; };
 
-  // Cache-Buster gegen Pages-Caching
   imgWater.src  = IMG_WATER  + '?v=' + Date.now();
   imgPlants.src = IMG_PLANTS + '?v=' + Date.now();
 
-  // Spiegeltext (≈30% kleiner, türkis, halbtransparent)
+  // Text (deckend blau, kleiner)
   const textCanvas = document.createElement('canvas');
   const txtx = textCanvas.getContext('2d');
-  textCanvas.width = 180;  // kleiner
+  textCanvas.width = 180;
   textCanvas.height = 46;
-  txtx.fillStyle = 'rgba(64, 224, 208, 0.6)'; // Türkis transparent
+  txtx.fillStyle = '#2EA0FF'; // volldeckendes Blau
   txtx.font = 'bold 24px sans-serif';
   txtx.textAlign = 'center';
   txtx.textBaseline = 'middle';
@@ -134,18 +132,16 @@ document.addEventListener('DOMContentLoaded', () => {
     cWater.width  = w; cWater.height  = h;
     cPlants.width = w; cPlants.height = h;
 
-    const px = (Math.min(w,h) < 820) ? 3 : 4;  // Pixelgröße
+    const px = (Math.min(w,h) < 820) ? 3 : 4;
     buf.width  = Math.ceil(w / px);
     buf.height = Math.ceil(h / px);
 
-    // Erstframe-Hintergrund
     wtx.fillStyle = '#0a0c20';
     wtx.fillRect(0,0,w,h);
 
-    drawPlants(); // sicher: bei jedem Fit neu
+    drawPlants();
   }
 
-  // ResizeObserver / Fallback
   try {
     if (section && section instanceof Element) {
       new ResizeObserver(() => fit()).observe(section);
@@ -155,13 +151,11 @@ document.addEventListener('DOMContentLoaded', () => {
   } catch { window.addEventListener('resize', fit, { passive:true }); }
   window.addEventListener('ws:slide-change', fit, { passive:true });
 
-  // Pflanzen-Maske (sichtbar erzwingen)
   function drawPlants() {
     const W = cPlants.width, H = cPlants.height;
     ptx.clearRect(0,0,W,H);
     if (!showMask || !plantsReady) return;
 
-    // 1) PNG platzieren (Cover)
     const sW = imgPlants.naturalWidth  || imgPlants.width;
     const sH = imgPlants.naturalHeight || imgPlants.height;
     const sR = sW / sH, dR = W / H;
@@ -169,7 +163,6 @@ document.addEventListener('DOMContentLoaded', () => {
     if (dh < H) { dh=H; dw=Math.round(H*sR); }
     const dx = Math.round((W - dw)/2), dy = Math.round((H - dh)/2);
 
-    // Optional: weicher Rand (sichtbarer Kontrast)
     if (outline) {
       ptx.save();
       ptx.shadowColor = 'rgba(0,0,0,0.9)';
@@ -180,10 +173,17 @@ document.addEventListener('DOMContentLoaded', () => {
       ptx.drawImage(imgPlants, 0,0,sW,sH, dx,dy,dw,dh);
     }
 
-    // 2) Auf deckendes Schwarz färben (falls PNG halbtransparent / grau ist)
-    ptx.globalCompositeOperation = 'source-in';
-    ptx.fillStyle = debugGreen ? 'rgba(0,255,140,0.8)' : 'rgba(0,0,0,1)';
-    ptx.fillRect(0,0,W,H);
+    if (!invertMask) {
+      ptx.globalCompositeOperation = 'source-in';
+      ptx.fillStyle = debugGreen ? 'rgba(0,255,140,0.9)' : '#000';
+      ptx.fillRect(0,0,W,H);
+    } else {
+      ptx.globalCompositeOperation = 'source-over';
+      ptx.fillStyle = debugGreen ? 'rgba(0,255,140,0.9)' : '#000';
+      ptx.fillRect(0,0,W,H);
+      ptx.globalCompositeOperation = 'destination-out';
+      ptx.drawImage(imgPlants, 0,0,sW,sH, dx,dy,dw,dh);
+    }
     ptx.globalCompositeOperation = 'source-over';
   }
 
@@ -205,7 +205,6 @@ document.addEventListener('DOMContentLoaded', () => {
     const sH = imgWater.naturalHeight || imgWater.height;
     const cover = coverRect(sW, sH, buf.width, buf.height);
 
-    // Wasser (Wellen)
     for (let y=0; y<buf.height; y++) {
       const sy = cover.sy + (y / buf.height) * cover.sh;
       const shift = Math.sin(y/12 + t*0.9) * 6;
@@ -216,14 +215,11 @@ document.addEventListener('DOMContentLoaded', () => {
       );
     }
 
-    // Spiegeltext mittig
     const tx = Math.floor(buf.width/2  - textCanvas.width/2);
     const ty = Math.floor(buf.height/2 - textCanvas.height/2);
-    bufx.globalAlpha = 0.25;
-    bufx.drawImage(textCanvas, tx, ty);
     bufx.globalAlpha = 1;
+    bufx.drawImage(textCanvas, tx, ty);
 
-    // Buffer → Canvas
     const sR = buf.width / buf.height;
     let dw = W, dh = Math.round(W / sR);
     if (dh < H) { dh = H; dw = Math.round(H * sR); }
@@ -231,7 +227,6 @@ document.addEventListener('DOMContentLoaded', () => {
     wtx.imageSmoothingEnabled = false;
     wtx.drawImage(buf, 0,0, buf.width, buf.height, dx,dy,dw,dh);
 
-    // Pflanzen oben drauf (bei jedem Frame, damit es bei Zoom/Pixelgröße passt)
     drawPlants();
 
     raf = requestAnimationFrame(frame);
@@ -239,16 +234,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function start(){ if (!raf) raf = requestAnimationFrame(frame); }
 
-  // Debug-Tasten:
-  // M = Maske an/aus, G = Grün einfärben (Sichtbarkeitstest), O = Outline/Rand
+  // Debug-Tasten
   window.addEventListener('keydown', (e)=>{
     const k = e.key.toLowerCase();
-    if (k === 'm') { showMask = !showMask; drawPlants(); }
+    if (k === 'm') { showMask   = !showMask;   drawPlants(); }
     if (k === 'g') { debugGreen = !debugGreen; drawPlants(); }
-    if (k === 'o') { outline = !outline; drawPlants(); }
+    if (k === 'o') { outline    = !outline;    drawPlants(); }
+    if (k === 'i') { invertMask = !invertMask; drawPlants(); }
   });
 
-  // Badge für Fehlermeldungen
   function showBadge(text) {
     const el = document.createElement('div');
     el.textContent = text;
