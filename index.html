@@ -10,61 +10,62 @@
 
   <style>
     :root{
-      --hint-bg: rgba(17,17,17,.75);
+      --hint-bg: rgba(30,30,30,.72);
       --hint-fg: #fff;
-      --accent:  #00a6ff;
     }
-    html,body{height:100%;margin:0;background:#f4f4f4}
-    /* Pixel layer (background grid) */
+    html,body{height:100%;margin:0;background:#f4f4f4;overflow:hidden}
+
+    /* Pixel-Layer (hinterer Buffer, sichtbar skaliert) */
     canvas#stage{
       position:fixed; inset:0; width:100vw; height:100vh; z-index:1;
       image-rendering: pixelated; image-rendering: crisp-edges; display:block;
     }
-    /* UI overlays drawn above, including smooth text layer */
+    /* UI-Layer (glatte Schrift & Overlays) */
     canvas#ui{
       position:fixed; inset:0; width:100vw; height:100vh; z-index:2;
       display:block; pointer-events:none;
     }
 
-    /* Arrow hint */
-    .hint{
-      position:fixed; left:50%; bottom:18px; transform:translateX(-50%);
-      z-index:5; background:var(--hint-bg); color:var(--hint-fg);
-      font:14px/1.35 "Work Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-      padding:10px 14px; border-radius:10px; letter-spacing:.02em;
-      display:flex; align-items:center; gap:10px; user-select:none;
+    /* Dauerhafte Legende */
+    .legend{
+      position:fixed; left:16px; bottom:16px; z-index:8;
+      background:var(--hint-bg); color:var(--hint-fg);
+      padding:12px 14px; border-radius:12px;
+      font:12px/1.35 "Work Sans", system-ui, sans-serif;
+      backdrop-filter:saturate(120%) blur(2px);
+      user-select:none;
+      max-width:min(92vw, 440px);
     }
-    .keys{
-      display:inline-flex; gap:6px; align-items:center;
-    }
+    .legend h4{margin:0 0 8px; font:700 13px/1.2 "Work Sans", system-ui, sans-serif}
+    .legend .row{display:flex; align-items:center; gap:8px; margin:4px 0; flex-wrap:wrap}
+    .legend .label{opacity:.9; min-width:92px}
+
+    /* Keycaps (werden auch im Hilfe-Panel genutzt) */
+    .keys{display:inline-flex;gap:6px;align-items:center}
     .key{
-      min-width:20px; height:20px; padding:0 6px;
+      min-width:20px;height:20px;padding:0 6px;
       border:1px solid rgba(255,255,255,.4);
-      border-bottom-width:2px; border-radius:6px;
-      display:inline-flex; align-items:center; justify-content:center;
-      font:12px/1 "Inter", system-ui, sans-serif;
-      background:rgba(255,255,255,.1);
+      border-bottom-width:2px;border-radius:6px;
+      display:inline-flex;align-items:center;justify-content:center;
+      font:12px/1.1 "Inter",system-ui,sans-serif;
+      background:rgba(255,255,255,.12)
     }
 
-    /* Help panel (toggle with H/?) */
+    /* Hilfe-Panel */
     .panel{
       position:fixed; right:18px; bottom:18px; z-index:6;
-      width:min(92vw,420px); max-width:420px;
+      width:min(92vw,420px);
       background:var(--hint-bg); color:var(--hint-fg);
       border-radius:12px; padding:14px 16px; box-shadow:0 8px 24px rgba(0,0,0,.2);
       font:14px/1.45 "Work Sans", system-ui, sans-serif; display:none;
+      user-select:none;
     }
-    .panel h3{margin:0 0 10px; font:700 16px/1.2 "Work Sans", system-ui, sans-serif}
+    .panel h3{margin:0 0 10px; font:700 16px/1.2 "Work Sans"}
     .panel .row{display:flex; justify-content:space-between; gap:8px; margin:6px 0}
-    .panel .row .left{opacity:.9}
-    .panel .row .right{display:flex; gap:6px}
-    .panel .key{border-color:rgba(255,255,255,.35)}
-    .badge{
-      display:inline-block; padding:2px 8px; border-radius:999px;
-      background:rgba(255,255,255,.12); font:12px/1.2 "Inter", system-ui, sans-serif;
-    }
+    .panel .left{opacity:.9}
+    .panel .right{display:flex; gap:6px}
 
-    /* Mini status bubble (top-left) */
+    /* Mini-Statusblase */
     .status{
       position:fixed; left:10px; top:10px; z-index:7;
       background:var(--hint-bg); color:var(--hint-fg);
@@ -75,24 +76,52 @@
 </head>
 <body>
 
-<!-- Pixel grid -->
+<!-- Pixel-Grid -->
 <canvas id="stage"></canvas>
-<!-- Smooth overlay for text and UI drawing -->
+<!-- Glatter UI-/Text-Layer -->
 <canvas id="ui"></canvas>
 
-<!-- Arrow-keys hint -->
-<div class="hint" id="hint">
-  <span class="keys">
-    <span class="key">←</span><span class="key">→</span>
-  </span>
-  <span>mit den Pfeiltasten navigieren</span>
-  <span class="keys" style="margin-left:10px">
-    <span class="key">H</span>
-  </span>
-  <span>Hilfe</span>
+<!-- Dauerhafte Legende -->
+<div class="legend" id="legend">
+  <h4>Navigation & Steuerung</h4>
+  <div class="row">
+    <span class="label">Slides</span>
+    <span class="keys"><span class="key">←</span><span class="key">→</span></span>
+    <span>mit Pfeiltasten wechseln</span>
+  </div>
+  <div class="row">
+    <span class="label">Pause/Play</span>
+    <span class="keys"><span class="key">Space</span></span>
+    <span>Animation an/aus</span>
+  </div>
+  <div class="row">
+    <span class="label">Layout</span>
+    <span class="keys"><span class="key">R</span></span>
+    <span>neu würfeln</span>
+  </div>
+  <div class="row">
+    <span class="label">Farben</span>
+    <span class="keys"><span class="key">C</span></span>
+    <span>neu mischen</span>
+  </div>
+  <div class="row">
+    <span class="label">Pixelgröße</span>
+    <span class="keys"><span class="key">B</span></span>
+    <span>3 / 4 / 6 toggeln</span>
+  </div>
+  <div class="row">
+    <span class="label">Schrift</span>
+    <span class="keys"><span class="key">F</span></span>
+    <span>Font wechseln</span>
+  </div>
+  <div class="row">
+    <span class="label">Hilfe</span>
+    <span class="keys"><span class="key">H</span><span class="key">?</span></span>
+    <span>Panel ein/aus</span>
+  </div>
 </div>
 
-<!-- Help panel -->
+<!-- Hilfe-Panel (toggle mit H/?) -->
 <div class="panel" id="panel">
   <h3>Steuerung</h3>
   <div class="row"><span class="left">Pause / Weiter</span><span class="right"><span class="key">Space</span></span></div>
@@ -101,41 +130,38 @@
   <div class="row"><span class="left">Pixelgröße</span><span class="right"><span class="key">B</span></span></div>
   <div class="row"><span class="left">Schrift wechseln</span><span class="right"><span class="key">F</span></span></div>
   <div class="row"><span class="left">Hilfe ein/aus</span><span class="right"><span class="key">H</span><span class="key">?</span></span></div>
-  <div class="row" style="margin-top:8px"><span class="badge">Tipp</span><span class="left" style="opacity:.85">Klick auf diese Box schließt sie.</span></div>
+  <div style="margin-top:6px; opacity:.8; font-size:12px">Tipp: klick auf dieses Panel, um es zu schließen.</div>
 </div>
 
-<!-- debug/status (shown only when needed) -->
+<!-- Debug/Status -->
 <div class="status" id="status"></div>
 
 <script>
 (() => {
-  // ---------- canvases ----------
+  // --- Canvas Setup ---
   const stage = document.getElementById('stage');
   const stx   = stage.getContext('2d', {alpha:false});
   stx.imageSmoothingEnabled = false;
 
   const ui = document.getElementById('ui');
   const utx = ui.getContext('2d', {alpha:true});
-  utx.imageSmoothingEnabled = true; // smooth text!
+  utx.imageSmoothingEnabled = true; // glatte Schrift
 
-  // offscreen buffer for pixel grid
   const buf = document.createElement('canvas');
   const btx = buf.getContext('2d', {alpha:false});
   btx.imageSmoothingEnabled = false;
 
-  // ---------- state ----------
+  // --- State ---
   let PIX = 4;
   let paused = false;
-  let fontIndex = 0; // cycles through fonts
+  let fontIndex = 0;
   const FONTS = [
     `"Work Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`,
     `"Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`
   ];
 
-  // arrow hint & help panel
-  const hint  = document.getElementById('hint');
   const panel = document.getElementById('panel');
-  panel.addEventListener('click', ()=> panel.style.display='none');
+  const legend = document.getElementById('legend');
 
   function showStatus(txt){
     const el = document.getElementById('status');
@@ -146,7 +172,6 @@
   }
 
   function resize(){
-    // stage & ui canvas scale to window
     stage.width  = Math.max(2, Math.floor(window.innerWidth));
     stage.height = Math.max(2, Math.floor(window.innerHeight));
     ui.width  = stage.width;
@@ -158,7 +183,7 @@
     buf.width  = Math.ceil(stage.width  / PIX);
     buf.height = Math.ceil(stage.height / PIX);
 
-    // initial paint (paper + tiny test bar) so you see something instantly
+    // Sofort sichtbar machen
     btx.fillStyle = '#F6F6F6'; btx.fillRect(0,0,buf.width,buf.height);
     btx.fillStyle = '#ff3b30'; btx.fillRect(4,4,Math.min(60,buf.width-8),10);
     stx.clearRect(0,0,stage.width,stage.height);
@@ -168,19 +193,14 @@
   window.addEventListener('resize', resize, {passive:true});
   resize();
 
-  // ---------- colors ----------
+  // --- Farben & Utilities ---
   const COLORS = { white:'#FFFFFF', red:'#E6432E', yellow:'#F4D21F', blue:'#1A3D9A', black:'#111111' };
   const PALETTE = [COLORS.white, COLORS.red, COLORS.yellow, COLORS.blue];
-  function pickColor(){
-    const r=Math.random();
-    return r<.64?COLORS.white : r<.80?COLORS.red : r<.92?COLORS.yellow : COLORS.blue;
-  }
-  function otherColor(base){
-    const c = PALETTE.filter(x=>x!==base);
-    return c[(Math.random()*c.length)|0];
-  }
+  const pickColor = () => ( (r=Math.random())<.64?COLORS.white : r<.80?COLORS.red : r<.92?COLORS.yellow : COLORS.blue );
+  const otherColor = base => PALETTE.filter(x=>x!==base)[(Math.random()*3)|0];
+  const clamp = (v,a,b)=> v<a?a : (v>b?b : v);
 
-  // ---------- layout ----------
+  // --- Layout ---
   let vLines,hLines,vCur,vTarget,hCur,hTarget,cells;
 
   function seedLayout(){
@@ -205,7 +225,7 @@
     bindTextRow();
   }
 
-  // ---------- letter groups in one row ----------
+  // --- Wort in Gruppen pro Spalte ---
   const WORD='alexhatchl';
   let textRowIndex=0, groups=[];
   function bindTextRow(){
@@ -242,11 +262,10 @@
     fitGroupsToCols();
   }
 
-  // ---------- motion ----------
+  // --- Bewegung ---
   const MIN_GAP=.08, STEP=.04, COUPLE=.55, EASE=.14;
   let nextBeatA=0, nextBeatB=0;
 
-  const clamp = (v,a,b)=> v<a?a : (v>b?b : v);
   function nudge(target, index, dir){
     const i=index, L=i-1, R=i+1, step=dir*STEP;
     const minX = target[L]+MIN_GAP, maxX = target[R]-MIN_GAP;
@@ -276,11 +295,11 @@
   }
   const lerpTowards=(cur,tgt,k)=>{ for(let i=0;i<cur.length;i++) cur[i]+= (tgt[i]-cur[i])*k; };
 
-  // ---------- draw ----------
+  // --- Zeichnen ---
   function draw(){
     const W=buf.width, H=buf.height;
     btx.fillStyle='#F6F6F6'; btx.fillRect(0,0,W,H);
-    // cells
+    // Zellen
     for(let j=0;j<hCur.length-1;j++){
       const y0=Math.round(hCur[j]*H), y1=Math.round(hCur[j+1]*H);
       for(let i=0;i<vCur.length-1;i++){
@@ -289,23 +308,22 @@
         btx.fillRect(x0,y0,x1-x0,y1-y0);
       }
     }
-    // lines
+    // Linien
     const L=Math.max(2, Math.round(Math.min(W,H)*0.008));
     btx.fillStyle=COLORS.black;
     for(let i=0;i<vCur.length;i++){ const x=Math.round(vCur[i]*W)-(L>>1); btx.fillRect(x,0,L,H); }
     for(let j=0;j<hCur.length;j++){ const y=Math.round(hCur[j]*H)-(L>>1); btx.fillRect(0,y,W,L); }
 
-    // push pixel buffer to screen
+    // Buffer → Screen
     stx.imageSmoothingEnabled=false;
     stx.clearRect(0,0,stage.width,stage.height);
     stx.drawImage(buf,0,0,W,H,0,0,stage.width,stage.height);
 
-    // draw SMOOTH text on the UI canvas (after scaling)
+    // Glatte Buchstaben
     utx.clearRect(0,0,ui.width,ui.height);
     const cols=vCur.length-1;
     if(groups.length!==cols) fitGroupsToCols();
     const ry0=Math.round(hCur[textRowIndex]*H), ry1=Math.round(hCur[textRowIndex+1]*H);
-    // map buffer Y -> screen Y
     const y0 = Math.round(ry0 * (stage.height / H));
     const y1 = Math.round(ry1 * (stage.height / H));
     const cy = (y0 + y1) >> 1;
@@ -325,10 +343,10 @@
     }
   }
 
-  // ---------- run ----------
+  // --- Start ---
   function start(){
     seedLayout();
-    draw(); // visible at once
+    draw();
     let t0 = performance.now();
     function loop(now){
       if(!paused){
@@ -345,7 +363,7 @@
   }
   start();
 
-  // ---------- keys ----------
+  // --- Keyboard ---
   window.addEventListener('keydown', (e)=>{
     const k=e.key.toLowerCase();
     if(k===' '){ paused=!paused; showStatus(paused?'pause':'play'); }
@@ -365,8 +383,8 @@
     }
   });
 
-  // hide hint after a few seconds
-  setTimeout(()=> hint.style.display='none', 5000);
+  // Panel per Klick schließen (siehe Hinweis im Panel)
+  panel.addEventListener('click', ()=> panel.style.display='none');
 })();
 </script>
 </body>
