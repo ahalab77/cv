@@ -1,50 +1,45 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>alexhatchl — kinetic grid</title>
-
-  <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@500;700&family=Inter:wght@600&display=swap" rel="stylesheet">
-
-  <style>
-    html,body{height:100%;margin:0;background:#f4f4f4;overflow:hidden}
-    canvas#stage{
-      position:fixed; inset:0; width:100vw; height:100vh; z-index:1;
-      image-rendering: pixelated; image-rendering: crisp-edges; display:block;
-    }
-    canvas#ui{
-      position:fixed; inset:0; width:100vw; height:100vh; z-index:2;
-      display:block; pointer-events:none;
-    }
-
-    /* compact legend */
-    .legend{
-      position:fixed; bottom:10px; left:50%; transform:translateX(-50%);
-      background:rgba(30,30,30,.72); color:#fff;
-      padding:4px 10px; border-radius:8px;
-      font:11px/1 "Work Sans",system-ui,sans-serif;
-      backdrop-filter:blur(2px);
-      display:flex; gap:12px; z-index:8;
-    }
-    .keys{display:inline-flex;gap:4px;align-items:center}
-    .key{
-      min-width:14px;height:14px;padding:0 4px;
-      border:1px solid rgba(255,255,255,.4);
-      border-radius:3px;
-      display:inline-flex;align-items:center;justify-content:center;
-      font:10px/1 "Inter",system-ui,sans-serif;
-      background:rgba(255,255,255,.12)
-    }
-  </style>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>alexhatchl — kinetic grid</title>
+<link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@600;800&family=Inter:wght@600&display=swap" rel="stylesheet">
+<style>
+  html,body{height:100%;margin:0;background:#f4f4f4;overflow:hidden}
+  /* pixel grid layer */
+  canvas#stage{
+    position:fixed; inset:0; width:100vw; height:100vh; z-index:1;
+    image-rendering:pixelated; image-rendering:crisp-edges; display:block;
+  }
+  /* smooth UI/text layer */
+  canvas#ui{
+    position:fixed; inset:0; width:100vw; height:100vh; z-index:2;
+    display:block; pointer-events:none;
+  }
+  /* tiny centered legend */
+  .legend{
+    position:fixed; left:50%; bottom:10px; transform:translateX(-50%);
+    background:rgba(30,30,30,.72); color:#fff;
+    padding:4px 10px; border-radius:8px;
+    font:11px/1 "Work Sans",system-ui,sans-serif;
+    backdrop-filter:blur(2px); display:flex; gap:12px; z-index:8; user-select:none;
+  }
+  .keys{display:inline-flex;gap:4px;align-items:center}
+  .key{
+    min-width:14px;height:14px;padding:0 4px;
+    border:1px solid rgba(255,255,255,.4); border-radius:3px;
+    display:inline-flex;align-items:center;justify-content:center;
+    font:10px/1 "Inter",system-ui,sans-serif; background:rgba(255,255,255,.12)
+  }
+</style>
 </head>
 <body>
 
 <canvas id="stage"></canvas>
 <canvas id="ui"></canvas>
 
-<!-- tiny legend -->
-<div class="legend" id="legend">
+<div class="legend">
   <span class="keys"><span class="key">←</span><span class="key">→</span> Slides</span>
   <span class="keys"><span class="key">Space</span> Play</span>
   <span class="keys"><span class="key">R</span> Layout</span>
@@ -56,88 +51,148 @@
 
 <script>
 (() => {
-  const stage=document.getElementById('stage');
-  const stx=stage.getContext('2d',{alpha:false});
-  stx.imageSmoothingEnabled=false;
-  const ui=document.getElementById('ui');
-  const utx=ui.getContext('2d',{alpha:true});
-  utx.imageSmoothingEnabled=true;
-  const buf=document.createElement('canvas');
-  const btx=buf.getContext('2d',{alpha:false});
-  btx.imageSmoothingEnabled=false;
+  // canvases
+  const stage = document.getElementById('stage');
+  const stx   = stage.getContext('2d', {alpha:false});
+  stx.imageSmoothingEnabled = false;
 
-  let PIX=4,paused=false,fontIndex=0;
-  const FONTS=[
+  const ui = document.getElementById('ui');
+  const utx = ui.getContext('2d', {alpha:true});
+  utx.imageSmoothingEnabled = true;
+
+  // offscreen buffer for pixel look
+  const buf = document.createElement('canvas');
+  const btx = buf.getContext('2d', {alpha:false});
+  btx.imageSmoothingEnabled = false;
+
+  // state
+  let PIX = 4, paused = false, fontIndex = 0;
+  const FONTS = [
     `"Work Sans",system-ui,sans-serif`,
     `"Inter",system-ui,sans-serif`
   ];
+
   function resize(){
-    stage.width=window.innerWidth;
-    stage.height=window.innerHeight;
-    ui.width=stage.width;ui.height=stage.height;
-    buf.width=Math.ceil(stage.width/PIX);
-    buf.height=Math.ceil(stage.height/PIX);
+    stage.width  = window.innerWidth;
+    stage.height = window.innerHeight;
+    ui.width = stage.width; ui.height = stage.height;
+    buf.width  = Math.ceil(stage.width  / PIX);
+    buf.height = Math.ceil(stage.height / PIX);
   }
-  window.addEventListener('resize',resize);resize();
+  window.addEventListener('resize', resize, {passive:true}); resize();
 
-  const COLORS={white:'#fff',red:'#E6432E',yellow:'#F4D21F',blue:'#1A3D9A',black:'#111'};
-  const PALETTE=[COLORS.white,COLORS.red,COLORS.yellow,COLORS.blue];
-  const pick=()=>PALETTE[Math.random()*PALETTE.length|0];
-  const other=(base)=>PALETTE.filter(c=>c!==base)[Math.random()*3|0];
+  // palette
+  const COLORS = { white:'#FFFFFF', red:'#E6432E', yellow:'#F4D21F', blue:'#1A3D9A', black:'#111111' };
+  const PALETTE = [COLORS.white, COLORS.red, COLORS.yellow, COLORS.blue];
+  const pickColor = ()=> ( (r=Math.random())<.64?COLORS.white : r<.80?COLORS.red : r<.92?COLORS.yellow : COLORS.blue );
 
+  // layout & motion
   let vLines,hLines,vCur,vTarget,hCur,hTarget,cells;
-  const WORD="alexhatchl";let textRow=0,groups=[];
+  const MIN_GAP=.08, STEP=.04, COUPLE=.55;
+  const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
+
   function seed(){
-    const nV=3+(Math.random()*3|0),nH=3+(Math.random()*3|0);
-    const rand=n=>{const s=new Set();while(s.size<n)s.add(Math.random());return[...s].sort((a,b)=>a-b)};
-    vLines=[0,...rand(nV),1];hLines=[0,...rand(nH),1];
-    vCur=vLines.slice();hCur=hLines.slice();vTarget=vCur.slice();hTarget=hCur.slice();
-    cells=[];for(let j=0;j<hLines.length-1;j++){const row=[];for(let i=0;i<vLines.length-1;i++)row.push(pick());cells.push(row);}
-    textRow=(hLines.length/2)|0;groups=WORD.split('');
+    const nV=3+(Math.random()*3|0), nH=3+(Math.random()*3|0);
+    const rand=n=>{const s=new Set();while(s.size<n)s.add(Math.round((0.12+Math.random()*0.76)*1000)/1000);return[...s].sort((a,b)=>a-b)};
+    vLines=[0,...rand(nV),1];
+    hLines=[0,...rand(nH),1];
+    vCur=vLines.slice(); vTarget=vLines.slice();
+    hCur=hLines.slice(); hTarget=hLines.slice();
+    cells=[];
+    for(let j=0;j<hLines.length-1;j++){
+      const row=[]; for(let i=0;i<vLines.length-1;i++) row.push(pickColor());
+      cells.push(row);
+    }
   }
   seed();
 
+  function nudge(target,index,dir){
+    const i=index, L=i-1, R=i+1, step=dir*STEP;
+    const minX = target[L]+MIN_GAP, maxX = target[R]-MIN_GAP;
+    target[i] = clamp(target[i]+step, minX, maxX);
+    if(L>0){
+      const lmin=target[L-1]+MIN_GAP, lmax=target[i]-MIN_GAP;
+      target[L] = clamp(target[L]+step*COUPLE, lmin, lmax);
+    }
+    if(R<target.length-1){
+      const rmin=target[i]+MIN_GAP, rmax=target[R+1]-MIN_GAP;
+      target[R] = clamp(target[R]+step*COUPLE, rmin, rmax);
+    }
+  }
+
+  function recolor(){
+    for(let j=0;j<cells.length;j++)
+      for(let i=0;i<cells[j].length;i++)
+        if(Math.random()<.28) cells[j][i]=pickColor();
+  }
+
+  function beat(){
+    if(Math.random()<.5){
+      if(vTarget.length>2) nudge(vTarget, 1+(Math.random()*(vTarget.length-2)|0), Math.random()<.5?-1:1);
+    }else{
+      if(hTarget.length>2) nudge(hTarget, 1+(Math.random()*(hTarget.length-2)|0), Math.random()<.5?-1:1);
+    }
+    if(Math.random()<.18) recolor();
+  }
+
+  function lerp(cur,tgt,k){ for(let i=0;i<cur.length;i++) cur[i]+= (tgt[i]-cur[i])*k; }
+
+  // draw
   function draw(){
-    const W=buf.width,H=buf.height;
-    btx.fillStyle="#F6F6F6";btx.fillRect(0,0,W,H);
+    const W=buf.width, H=buf.height;
+    // fill cells
+    btx.fillStyle='#F6F6F6'; btx.fillRect(0,0,W,H);
     for(let j=0;j<hCur.length-1;j++){
-      const y0=Math.round(hCur[j]*H),y1=Math.round(hCur[j+1]*H);
+      const y0=Math.round(hCur[j]*H), y1=Math.round(hCur[j+1]*H);
       for(let i=0;i<vCur.length-1;i++){
-        const x0=Math.round(vCur[i]*W),x1=Math.round(vCur[i+1]*W);
+        const x0=Math.round(vCur[i]*W), x1=Math.round(vCur[i+1]*W);
         btx.fillStyle=cells[j][i];
         btx.fillRect(x0,y0,x1-x0,y1-y0);
       }
     }
-    const L=Math.max(2,Math.round(Math.min(W,H)*0.008));
+    // lines
+    const L=Math.max(2, Math.round(Math.min(W,H)*0.008));
     btx.fillStyle=COLORS.black;
-    for(let i=0;i<vCur.length;i++){const x=Math.round(vCur[i]*W)-(L>>1);btx.fillRect(x,0,L,H);}
-    for(let j=0;j<hCur.length;j++){const y=Math.round(hCur[j]*H)-(L>>1);btx.fillRect(0,y,W,L);}
+    for(let i=0;i<vCur.length;i++){ const x=Math.round(vCur[i]*W)-(L>>1); btx.fillRect(x,0,L,H); }
+    for(let j=0;j<hCur.length;j++){ const y=Math.round(hCur[j]*H)-(L>>1); btx.fillRect(0,y,W,L); }
+    // buffer → screen
+    stx.imageSmoothingEnabled=false;
+    stx.clearRect(0,0,stage.width,stage.height);
     stx.drawImage(buf,0,0,W,H,0,0,stage.width,stage.height);
 
+    // centered name (smooth, not pixelated)
     utx.clearRect(0,0,ui.width,ui.height);
-    const cols=vCur.length-1;
-    const ry0=Math.round(hCur[textRow]*H),ry1=Math.round(hCur[textRow+1]*H);
-    const y0=Math.round(ry0*(stage.height/H)),y1=Math.round(ry1*(stage.height/H));
-    const cy=(y0+y1)>>1;
-    utx.font=`600 11px ${FONTS[fontIndex]}`;utx.textAlign='center';utx.textBaseline='middle';
-    for(let i=0;i<cols;i++){
-      const g=groups[i]||'';if(!g)continue;
-      const x0=Math.round(vCur[i]*W),x1=Math.round(vCur[i+1]*W);
-      const cx=((x0+x1)/2)*(stage.width/W);
-      utx.fillStyle=other(cells[textRow][i]);
-      utx.fillText(g,cx,cy);
-    }
+    const fontPx = Math.max(18, Math.round(Math.min(stage.width,stage.height)*0.09)); // responsive
+    utx.font = `800 ${fontPx}px ${FONTS[fontIndex]}`;
+    utx.textAlign='center'; utx.textBaseline='middle';
+    utx.fillStyle = '#111';
+    utx.fillText('alexhatchl', stage.width/2, stage.height/2);
   }
 
-  function loop(){if(!paused){draw();}requestAnimationFrame(loop);}
-  loop();
+  // loop with beats
+  let t0 = performance.now(), nextA=0, nextB=0;
+  function loop(now){
+    if(!paused){
+      const t=(now-t0)/1000;
+      lerp(vCur,vTarget,.14);
+      lerp(hCur,hTarget,.14);
+      if(t>=nextA){ beat(); nextA = t + (0.85 + (Math.random()*0.16 - 0.08)); }
+      if(t>=nextB){ beat(); nextB = t + (1.35 + (Math.random()*0.22 - 0.11)); }
+      draw();
+    }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
 
-  window.addEventListener('keydown',e=>{
-    if(e.key===' ')paused=!paused;
-    if(e.key==='r')seed();
-    if(e.key==='c'){for(let j=0;j<cells.length;j++)for(let i=0;i<cells[j].length;i++)cells[j][i]=pick();}
-    if(e.key==='b'){PIX=(PIX===4?6:(PIX===6?3:4));resize();}
-    if(e.key==='f'){fontIndex=(fontIndex+1)%FONTS.length;}
+  // keys
+  window.addEventListener('keydown', (e)=>{
+    const k=e.key.toLowerCase();
+    if(k===' '){ paused=!paused; }
+    if(k==='r'){ seed(); }
+    if(k==='c'){ recolor(); }
+    if(k==='b'){ PIX = (PIX===4)?6:(PIX===6?3:4); resize(); }
+    if(k==='f'){ fontIndex=(fontIndex+1)%FONTS.length; }
+    if(k==='h'){ alert('Keys: ← → / Space / R / C / B / F'); }
   });
 })();
 </script>
