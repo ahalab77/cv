@@ -1,390 +1,144 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>alexhatchl — kinetic grid</title>
 
-  <!-- Smooth fonts -->
   <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@500;700&family=Inter:wght@600&display=swap" rel="stylesheet">
 
   <style>
-    :root{
-      --hint-bg: rgba(30,30,30,.72);
-      --hint-fg: #fff;
-    }
     html,body{height:100%;margin:0;background:#f4f4f4;overflow:hidden}
-
-    /* Pixel-Layer (hinterer Buffer, sichtbar skaliert) */
     canvas#stage{
       position:fixed; inset:0; width:100vw; height:100vh; z-index:1;
       image-rendering: pixelated; image-rendering: crisp-edges; display:block;
     }
-    /* UI-Layer (glatte Schrift & Overlays) */
     canvas#ui{
       position:fixed; inset:0; width:100vw; height:100vh; z-index:2;
       display:block; pointer-events:none;
     }
 
-    /* Dauerhafte Legende */
+    /* compact legend */
     .legend{
-      position:fixed; left:16px; bottom:16px; z-index:8;
-      background:var(--hint-bg); color:var(--hint-fg);
-      padding:12px 14px; border-radius:12px;
-      font:12px/1.35 "Work Sans", system-ui, sans-serif;
-      backdrop-filter:saturate(120%) blur(2px);
-      user-select:none;
-      max-width:min(92vw, 440px);
+      position:fixed; bottom:10px; left:50%; transform:translateX(-50%);
+      background:rgba(30,30,30,.72); color:#fff;
+      padding:4px 10px; border-radius:8px;
+      font:11px/1 "Work Sans",system-ui,sans-serif;
+      backdrop-filter:blur(2px);
+      display:flex; gap:12px; z-index:8;
     }
-    .legend h4{margin:0 0 8px; font:700 13px/1.2 "Work Sans", system-ui, sans-serif}
-    .legend .row{display:flex; align-items:center; gap:8px; margin:4px 0; flex-wrap:wrap}
-    .legend .label{opacity:.9; min-width:92px}
-
-    /* Keycaps (werden auch im Hilfe-Panel genutzt) */
-    .keys{display:inline-flex;gap:6px;align-items:center}
+    .keys{display:inline-flex;gap:4px;align-items:center}
     .key{
-      min-width:20px;height:20px;padding:0 6px;
+      min-width:14px;height:14px;padding:0 4px;
       border:1px solid rgba(255,255,255,.4);
-      border-bottom-width:2px;border-radius:6px;
+      border-radius:3px;
       display:inline-flex;align-items:center;justify-content:center;
-      font:12px/1.1 "Inter",system-ui,sans-serif;
+      font:10px/1 "Inter",system-ui,sans-serif;
       background:rgba(255,255,255,.12)
-    }
-
-    /* Hilfe-Panel */
-    .panel{
-      position:fixed; right:18px; bottom:18px; z-index:6;
-      width:min(92vw,420px);
-      background:var(--hint-bg); color:var(--hint-fg);
-      border-radius:12px; padding:14px 16px; box-shadow:0 8px 24px rgba(0,0,0,.2);
-      font:14px/1.45 "Work Sans", system-ui, sans-serif; display:none;
-      user-select:none;
-    }
-    .panel h3{margin:0 0 10px; font:700 16px/1.2 "Work Sans"}
-    .panel .row{display:flex; justify-content:space-between; gap:8px; margin:6px 0}
-    .panel .left{opacity:.9}
-    .panel .right{display:flex; gap:6px}
-
-    /* Mini-Statusblase */
-    .status{
-      position:fixed; left:10px; top:10px; z-index:7;
-      background:var(--hint-bg); color:var(--hint-fg);
-      font:12px/1.35 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      padding:6px 8px; border-radius:8px; display:none;
     }
   </style>
 </head>
 <body>
 
-<!-- Pixel-Grid -->
 <canvas id="stage"></canvas>
-<!-- Glatter UI-/Text-Layer -->
 <canvas id="ui"></canvas>
 
-<!-- Dauerhafte Legende -->
+<!-- tiny legend -->
 <div class="legend" id="legend">
-  <h4>Navigation & Steuerung</h4>
-  <div class="row">
-    <span class="label">Slides</span>
-    <span class="keys"><span class="key">←</span><span class="key">→</span></span>
-    <span>mit Pfeiltasten wechseln</span>
-  </div>
-  <div class="row">
-    <span class="label">Pause/Play</span>
-    <span class="keys"><span class="key">Space</span></span>
-    <span>Animation an/aus</span>
-  </div>
-  <div class="row">
-    <span class="label">Layout</span>
-    <span class="keys"><span class="key">R</span></span>
-    <span>neu würfeln</span>
-  </div>
-  <div class="row">
-    <span class="label">Farben</span>
-    <span class="keys"><span class="key">C</span></span>
-    <span>neu mischen</span>
-  </div>
-  <div class="row">
-    <span class="label">Pixelgröße</span>
-    <span class="keys"><span class="key">B</span></span>
-    <span>3 / 4 / 6 toggeln</span>
-  </div>
-  <div class="row">
-    <span class="label">Schrift</span>
-    <span class="keys"><span class="key">F</span></span>
-    <span>Font wechseln</span>
-  </div>
-  <div class="row">
-    <span class="label">Hilfe</span>
-    <span class="keys"><span class="key">H</span><span class="key">?</span></span>
-    <span>Panel ein/aus</span>
-  </div>
+  <span class="keys"><span class="key">←</span><span class="key">→</span> Slides</span>
+  <span class="keys"><span class="key">Space</span> Play</span>
+  <span class="keys"><span class="key">R</span> Layout</span>
+  <span class="keys"><span class="key">C</span> Colors</span>
+  <span class="keys"><span class="key">B</span> Pixel</span>
+  <span class="keys"><span class="key">F</span> Font</span>
+  <span class="keys"><span class="key">H</span> Help</span>
 </div>
-
-<!-- Hilfe-Panel (toggle mit H/?) -->
-<div class="panel" id="panel">
-  <h3>Steuerung</h3>
-  <div class="row"><span class="left">Pause / Weiter</span><span class="right"><span class="key">Space</span></span></div>
-  <div class="row"><span class="left">Neues Layout</span><span class="right"><span class="key">R</span></span></div>
-  <div class="row"><span class="left">Farben neu mischen</span><span class="right"><span class="key">C</span></span></div>
-  <div class="row"><span class="left">Pixelgröße</span><span class="right"><span class="key">B</span></span></div>
-  <div class="row"><span class="left">Schrift wechseln</span><span class="right"><span class="key">F</span></span></div>
-  <div class="row"><span class="left">Hilfe ein/aus</span><span class="right"><span class="key">H</span><span class="key">?</span></span></div>
-  <div style="margin-top:6px; opacity:.8; font-size:12px">Tipp: klick auf dieses Panel, um es zu schließen.</div>
-</div>
-
-<!-- Debug/Status -->
-<div class="status" id="status"></div>
 
 <script>
 (() => {
-  // --- Canvas Setup ---
-  const stage = document.getElementById('stage');
-  const stx   = stage.getContext('2d', {alpha:false});
-  stx.imageSmoothingEnabled = false;
+  const stage=document.getElementById('stage');
+  const stx=stage.getContext('2d',{alpha:false});
+  stx.imageSmoothingEnabled=false;
+  const ui=document.getElementById('ui');
+  const utx=ui.getContext('2d',{alpha:true});
+  utx.imageSmoothingEnabled=true;
+  const buf=document.createElement('canvas');
+  const btx=buf.getContext('2d',{alpha:false});
+  btx.imageSmoothingEnabled=false;
 
-  const ui = document.getElementById('ui');
-  const utx = ui.getContext('2d', {alpha:true});
-  utx.imageSmoothingEnabled = true; // glatte Schrift
-
-  const buf = document.createElement('canvas');
-  const btx = buf.getContext('2d', {alpha:false});
-  btx.imageSmoothingEnabled = false;
-
-  // --- State ---
-  let PIX = 4;
-  let paused = false;
-  let fontIndex = 0;
-  const FONTS = [
-    `"Work Sans", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`,
-    `"Inter", system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif`
+  let PIX=4,paused=false,fontIndex=0;
+  const FONTS=[
+    `"Work Sans",system-ui,sans-serif`,
+    `"Inter",system-ui,sans-serif`
   ];
-
-  const panel = document.getElementById('panel');
-  const legend = document.getElementById('legend');
-
-  function showStatus(txt){
-    const el = document.getElementById('status');
-    el.textContent = txt;
-    el.style.display = 'block';
-    clearTimeout(showStatus._t);
-    showStatus._t = setTimeout(()=> el.style.display='none', 1600);
-  }
-
   function resize(){
-    stage.width  = Math.max(2, Math.floor(window.innerWidth));
-    stage.height = Math.max(2, Math.floor(window.innerHeight));
-    ui.width  = stage.width;
-    ui.height = stage.height;
-
-    const d = Math.min(stage.width, stage.height);
-    PIX = d < 800 ? 3 : 4;
-
-    buf.width  = Math.ceil(stage.width  / PIX);
-    buf.height = Math.ceil(stage.height / PIX);
-
-    // Sofort sichtbar machen
-    btx.fillStyle = '#F6F6F6'; btx.fillRect(0,0,buf.width,buf.height);
-    btx.fillStyle = '#ff3b30'; btx.fillRect(4,4,Math.min(60,buf.width-8),10);
-    stx.clearRect(0,0,stage.width,stage.height);
-    stx.drawImage(buf,0,0,buf.width,buf.height,0,0,stage.width,stage.height);
-    utx.clearRect(0,0,ui.width,ui.height);
+    stage.width=window.innerWidth;
+    stage.height=window.innerHeight;
+    ui.width=stage.width;ui.height=stage.height;
+    buf.width=Math.ceil(stage.width/PIX);
+    buf.height=Math.ceil(stage.height/PIX);
   }
-  window.addEventListener('resize', resize, {passive:true});
-  resize();
+  window.addEventListener('resize',resize);resize();
 
-  // --- Farben & Utilities ---
-  const COLORS = { white:'#FFFFFF', red:'#E6432E', yellow:'#F4D21F', blue:'#1A3D9A', black:'#111111' };
-  const PALETTE = [COLORS.white, COLORS.red, COLORS.yellow, COLORS.blue];
-  const pickColor = () => ( (r=Math.random())<.64?COLORS.white : r<.80?COLORS.red : r<.92?COLORS.yellow : COLORS.blue );
-  const otherColor = base => PALETTE.filter(x=>x!==base)[(Math.random()*3)|0];
-  const clamp = (v,a,b)=> v<a?a : (v>b?b : v);
+  const COLORS={white:'#fff',red:'#E6432E',yellow:'#F4D21F',blue:'#1A3D9A',black:'#111'};
+  const PALETTE=[COLORS.white,COLORS.red,COLORS.yellow,COLORS.blue];
+  const pick=()=>PALETTE[Math.random()*PALETTE.length|0];
+  const other=(base)=>PALETTE.filter(c=>c!==base)[Math.random()*3|0];
 
-  // --- Layout ---
   let vLines,hLines,vCur,vTarget,hCur,hTarget,cells;
+  const WORD="alexhatchl";let textRow=0,groups=[];
+  function seed(){
+    const nV=3+(Math.random()*3|0),nH=3+(Math.random()*3|0);
+    const rand=n=>{const s=new Set();while(s.size<n)s.add(Math.random());return[...s].sort((a,b)=>a-b)};
+    vLines=[0,...rand(nV),1];hLines=[0,...rand(nH),1];
+    vCur=vLines.slice();hCur=hLines.slice();vTarget=vCur.slice();hTarget=hCur.slice();
+    cells=[];for(let j=0;j<hLines.length-1;j++){const row=[];for(let i=0;i<vLines.length-1;i++)row.push(pick());cells.push(row);}
+    textRow=(hLines.length/2)|0;groups=WORD.split('');
+  }
+  seed();
 
-  function seedLayout(){
-    const nV = 3 + (Math.random()*3|0);
-    const nH = 3 + (Math.random()*3|0);
-    const randPos = n=>{
-      const s=new Set();
-      while(s.size<n) s.add(Math.round((0.12+Math.random()*0.76)*1000)/1000);
-      return [...s].sort((a,b)=>a-b);
-    };
-    vLines=[0,...randPos(nV),1];
-    hLines=[0,...randPos(nH),1];
-    vCur=vLines.slice(); vTarget=vLines.slice();
-    hCur=hLines.slice(); hTarget=hLines.slice();
-
-    cells=[];
-    for(let j=0;j<hLines.length-1;j++){
-      const row=[];
-      for(let i=0;i<vLines.length-1;i++) row.push(pickColor());
-      cells.push(row);
-    }
-    bindTextRow();
-  }
-
-  // --- Wort in Gruppen pro Spalte ---
-  const WORD='alexhatchl';
-  let textRowIndex=0, groups=[];
-  function bindTextRow(){
-    const rows = hLines.length-1;
-    textRowIndex = Math.max(0, Math.min(rows-1, (rows/2)|0));
-    groups = WORD.split('');
-    fitGroupsToCols();
-  }
-  function fitGroupsToCols(){
-    const cols = vLines.length-1;
-    while(groups.length>cols){
-      const i = 1 + (Math.random()*(groups.length-1)|0);
-      groups[i-1]+=groups[i]; groups.splice(i,1);
-    }
-    while(groups.length<cols){
-      const idx = groups.findIndex(g=>g.length>1);
-      if(idx===-1){ groups.push(''); break; }
-      const g=groups[idx], cut=1+(Math.random()*(g.length-1)|0);
-      groups.splice(idx,1,g.slice(0,cut),g.slice(cut));
-    }
-  }
-  function mutateGroups(){
-    if(groups.length<=1 || Math.random()<.5){
-      const idxs=[]; for(let i=0;i<groups.length;i++) if(groups[i].length>1) idxs.push(i);
-      if(idxs.length){
-        const i = idxs[(Math.random()*idxs.length)|0];
-        const g = groups[i], cut = 1+(Math.random()*(g.length-1)|0);
-        groups.splice(i,1,g.slice(0,cut),g.slice(cut));
-      }
-    }else if(groups.length>=2){
-      const i = 1 + (Math.random()*(groups.length-1)|0);
-      groups[i-1]+=groups[i]; groups.splice(i,1);
-    }
-    fitGroupsToCols();
-  }
-
-  // --- Bewegung ---
-  const MIN_GAP=.08, STEP=.04, COUPLE=.55, EASE=.14;
-  let nextBeatA=0, nextBeatB=0;
-
-  function nudge(target, index, dir){
-    const i=index, L=i-1, R=i+1, step=dir*STEP;
-    const minX = target[L]+MIN_GAP, maxX = target[R]-MIN_GAP;
-    target[i] = clamp(target[i] + step, minX, maxX);
-    if(L>0){
-      const lmin=target[L-1]+MIN_GAP, lmax=target[i]-MIN_GAP;
-      target[L] = clamp(target[L] + step*COUPLE, lmin, lmax);
-    }
-    if(R < target.length-1){
-      const rmin=target[i]+MIN_GAP, rmax=target[R+1]-MIN_GAP;
-      target[R] = clamp(target[R] + step*COUPLE, rmin, rmax);
-    }
-  }
-  function recolor(){
-    for(let j=0;j<cells.length;j++)
-      for(let i=0;i<cells[j].length;i++)
-        if(Math.random()<.28) cells[j][i]=pickColor();
-  }
-  function beat(){
-    if(Math.random()<.5){
-      if(vTarget.length>2) nudge(vTarget, 1+(Math.random()*(vTarget.length-2)|0), Math.random()<.5?-1:1);
-    }else{
-      if(hTarget.length>2) nudge(hTarget, 1+(Math.random()*(hTarget.length-2)|0), Math.random()<.5?-1:1);
-    }
-    if(Math.random()<.18) recolor();
-    if(Math.random()<.9) mutateGroups();
-  }
-  const lerpTowards=(cur,tgt,k)=>{ for(let i=0;i<cur.length;i++) cur[i]+= (tgt[i]-cur[i])*k; };
-
-  // --- Zeichnen ---
   function draw(){
-    const W=buf.width, H=buf.height;
-    btx.fillStyle='#F6F6F6'; btx.fillRect(0,0,W,H);
-    // Zellen
+    const W=buf.width,H=buf.height;
+    btx.fillStyle="#F6F6F6";btx.fillRect(0,0,W,H);
     for(let j=0;j<hCur.length-1;j++){
-      const y0=Math.round(hCur[j]*H), y1=Math.round(hCur[j+1]*H);
+      const y0=Math.round(hCur[j]*H),y1=Math.round(hCur[j+1]*H);
       for(let i=0;i<vCur.length-1;i++){
-        const x0=Math.round(vCur[i]*W), x1=Math.round(vCur[i+1]*W);
+        const x0=Math.round(vCur[i]*W),x1=Math.round(vCur[i+1]*W);
         btx.fillStyle=cells[j][i];
         btx.fillRect(x0,y0,x1-x0,y1-y0);
       }
     }
-    // Linien
-    const L=Math.max(2, Math.round(Math.min(W,H)*0.008));
+    const L=Math.max(2,Math.round(Math.min(W,H)*0.008));
     btx.fillStyle=COLORS.black;
-    for(let i=0;i<vCur.length;i++){ const x=Math.round(vCur[i]*W)-(L>>1); btx.fillRect(x,0,L,H); }
-    for(let j=0;j<hCur.length;j++){ const y=Math.round(hCur[j]*H)-(L>>1); btx.fillRect(0,y,W,L); }
-
-    // Buffer → Screen
-    stx.imageSmoothingEnabled=false;
-    stx.clearRect(0,0,stage.width,stage.height);
+    for(let i=0;i<vCur.length;i++){const x=Math.round(vCur[i]*W)-(L>>1);btx.fillRect(x,0,L,H);}
+    for(let j=0;j<hCur.length;j++){const y=Math.round(hCur[j]*H)-(L>>1);btx.fillRect(0,y,W,L);}
     stx.drawImage(buf,0,0,W,H,0,0,stage.width,stage.height);
 
-    // Glatte Buchstaben
     utx.clearRect(0,0,ui.width,ui.height);
     const cols=vCur.length-1;
-    if(groups.length!==cols) fitGroupsToCols();
-    const ry0=Math.round(hCur[textRowIndex]*H), ry1=Math.round(hCur[textRowIndex+1]*H);
-    const y0 = Math.round(ry0 * (stage.height / H));
-    const y1 = Math.round(ry1 * (stage.height / H));
-    const cy = (y0 + y1) >> 1;
-
-    const fontPx = Math.max(12, Math.round(Math.min(stage.width,stage.height) * 0.018));
-    utx.font = `600 ${fontPx}px ${FONTS[fontIndex]}`;
-    utx.textAlign='center'; utx.textBaseline='middle';
-
+    const ry0=Math.round(hCur[textRow]*H),ry1=Math.round(hCur[textRow+1]*H);
+    const y0=Math.round(ry0*(stage.height/H)),y1=Math.round(ry1*(stage.height/H));
+    const cy=(y0+y1)>>1;
+    utx.font=`600 11px ${FONTS[fontIndex]}`;utx.textAlign='center';utx.textBaseline='middle';
     for(let i=0;i<cols;i++){
-      const g = groups[i] || ''; if(!g) continue;
-      const x0b = Math.round(vCur[i]*W), x1b = Math.round(vCur[i+1]*W);
-      const x0s = Math.round(x0b * (stage.width / W));
-      const x1s = Math.round(x1b * (stage.width / W));
-      const cx  = (x0s + x1s) >> 1;
-      utx.fillStyle = otherColor(cells[textRowIndex][i]);
-      utx.fillText(g, cx, cy);
+      const g=groups[i]||'';if(!g)continue;
+      const x0=Math.round(vCur[i]*W),x1=Math.round(vCur[i+1]*W);
+      const cx=((x0+x1)/2)*(stage.width/W);
+      utx.fillStyle=other(cells[textRow][i]);
+      utx.fillText(g,cx,cy);
     }
   }
 
-  // --- Start ---
-  function start(){
-    seedLayout();
-    draw();
-    let t0 = performance.now();
-    function loop(now){
-      if(!paused){
-        const t=(now-t0)/1000;
-        lerpTowards(vCur,vTarget,.14);
-        lerpTowards(hCur,hTarget,.14);
-        if(t>=nextBeatA){ beat(); nextBeatA = t + (0.85 + (Math.random()*0.16 - 0.08)); }
-        if(t>=nextBeatB){ beat(); nextBeatB = t + (1.38 + (Math.random()*0.22 - 0.11)); }
-        draw();
-      }
-      requestAnimationFrame(loop);
-    }
-    requestAnimationFrame(loop);
-  }
-  start();
+  function loop(){if(!paused){draw();}requestAnimationFrame(loop);}
+  loop();
 
-  // --- Keyboard ---
-  window.addEventListener('keydown', (e)=>{
-    const k=e.key.toLowerCase();
-    if(k===' '){ paused=!paused; showStatus(paused?'pause':'play'); }
-    if(k==='r'){ seedLayout(); draw(); showStatus('layout'); }
-    if(k==='c'){ recolor(); draw(); showStatus('colors'); }
-    if(k==='b'){
-      PIX = (PIX===4)?6:(PIX===6?3:4);
-      buf.width=Math.ceil(stage.width/PIX); buf.height=Math.ceil(stage.height/PIX);
-      draw(); showStatus('pixel '+PIX);
-    }
-    if(k==='f'){
-      fontIndex = (fontIndex+1) % FONTS.length;
-      draw(); showStatus('font '+(fontIndex+1));
-    }
-    if(k==='h' || k==='?' ){
-      panel.style.display = (panel.style.display==='block') ? 'none' : 'block';
-    }
+  window.addEventListener('keydown',e=>{
+    if(e.key===' ')paused=!paused;
+    if(e.key==='r')seed();
+    if(e.key==='c'){for(let j=0;j<cells.length;j++)for(let i=0;i<cells[j].length;i++)cells[j][i]=pick();}
+    if(e.key==='b'){PIX=(PIX===4?6:(PIX===6?3:4));resize();}
+    if(e.key==='f'){fontIndex=(fontIndex+1)%FONTS.length;}
   });
-
-  // Panel per Klick schließen (siehe Hinweis im Panel)
-  panel.addEventListener('click', ()=> panel.style.display='none');
 })();
 </script>
 </body>
