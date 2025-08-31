@@ -4,37 +4,42 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>alexhatchl — kinetic grid</title>
+
+<!-- kleines Inline-Favicon, damit keine 404 kommt -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' fill='%23111'/%3E%3Ctext x='50%25' y='52%25' text-anchor='middle' font-family='monospace' font-size='26' fill='%23fff'%3Eah%3C/text%3E%3C/svg%3E">
+
 <link href="https://fonts.googleapis.com/css2?family=Work+Sans:wght@600;800&family=Inter:wght@600&display=swap" rel="stylesheet">
+
 <style>
   html,body{height:100%;margin:0;background:#f4f4f4;overflow:hidden}
 
-  /* Pixel-Grid (hinterer Layer) */
-  canvas#stage{
+  /* Pixel-Grid */
+  #stage{
     position:fixed; inset:0; width:100vw; height:100vh; z-index:1;
     image-rendering:pixelated; image-rendering:crisp-edges; display:block;
   }
-  /* UI/Text (glatt) */
-  canvas#ui{
+  /* UI/Text-Overlay (glatt gerendert) */
+  #ui{
     position:fixed; inset:0; width:100vw; height:100vh; z-index:2;
     display:block; pointer-events:none;
   }
 
-  /* Gemeinsame Legend-Stile */
-  .legend {
-    color:#fff; background:rgba(30,30,30,.15); /* 15% idle */
-    border-radius:10px; padding:5px 10px; 
+  .legend{
+    color:#fff;
+    background:rgba(30,30,30,.15);      /* 15% idle */
+    border-radius:10px; padding:5px 10px;
     font:11px/1 "Work Sans",system-ui,sans-serif;
     backdrop-filter:blur(2px);
     display:flex; gap:12px; align-items:center; user-select:none;
     transition:background-color .2s ease;
   }
-  .legend.active, .legend:hover { background:rgba(30,30,30,.45); } /* 45% bei Hover/Activity */
+  .legend.active, .legend:hover{ background:rgba(30,30,30,.45); } /* 45% aktiv */
 
-  /* Funktions-Legend: links unten (nur Startseite sichtbar) */
+  /* Funktions-Legende: nur Startseite */
   #legend-keys{
     position:fixed; left:12px; bottom:12px; z-index:8;
   }
-  /* Arrow-Legend: unten mittig (immer sichtbar) */
+  /* Pfeil-Legende: immer sichtbar */
   #legend-arrows{
     position:fixed; left:50%; bottom:12px; transform:translateX(-50%); z-index:8;
   }
@@ -50,7 +55,6 @@
   }
   .lbl{opacity:.9}
 
-  /* Optional: bei sehr schmalen Screens die Legenden stapeln */
   @media (max-width:520px){
     .legend{gap:8px; padding:4px 8px}
     .key{padding:0 3px}
@@ -62,7 +66,7 @@
 <canvas id="stage"></canvas>
 <canvas id="ui"></canvas>
 
-<!-- Funktions-Legende (nur auf Startseite sichtbar) -->
+<!-- Funktions-Legende (links unten, nur Start) -->
 <div class="legend" id="legend-keys" hidden>
   <span class="keys"><span class="key">Space</span><span class="lbl">Play</span></span>
   <span class="keys"><span class="key">R</span><span class="lbl">Layout</span></span>
@@ -72,104 +76,120 @@
   <span class="keys"><span class="key">H</span><span class="lbl">Help</span></span>
 </div>
 
-<!-- Arrow-Legende (immer sichtbar) -->
+<!-- Pfeil-Legende (unten mittig, immer sichtbar) -->
 <div class="legend" id="legend-arrows">
   <span class="keys"><span class="key">←</span><span class="key">→</span><span class="lbl">Slides</span></span>
 </div>
 
 <script>
 (()=>{
-  // --------- Canvas Setup ----------
-  const stage=document.getElementById('stage');
-  const stx=stage.getContext('2d',{alpha:false});
-  stx.imageSmoothingEnabled=false;
+  /* ========= Canvas Setup ========= */
+  const stage = document.getElementById('stage');
+  const stx   = stage.getContext('2d', {alpha:false});
+  stx.imageSmoothingEnabled = false;
 
-  const ui=document.getElementById('ui');
-  const utx=ui.getContext('2d',{alpha:true});
-  utx.imageSmoothingEnabled=true;
+  const ui  = document.getElementById('ui');
+  const utx = ui.getContext('2d', {alpha:true});
+  utx.imageSmoothingEnabled = true;
 
-  const buf=document.createElement('canvas');
-  const btx=buf.getContext('2d',{alpha:false});
-  btx.imageSmoothingEnabled=false;
+  const buf = document.createElement('canvas');
+  const btx = buf.getContext('2d', {alpha:false});
+  btx.imageSmoothingEnabled = false;
 
-  let PIX=4, paused=false, fontIndex=0;
-  const FONTS=[
+  /* ========= Global State (vor Funktionen! ) ========= */
+  let PIX = 4, paused = false, fontIndex = 0;
+  const FONTS = [
     `"Work Sans",system-ui,sans-serif`,
     `"Inter",system-ui,sans-serif`
   ];
 
-  function resize(){
-    stage.width=window.innerWidth;
-    stage.height=window.innerHeight;
-    ui.width=stage.width; ui.height=stage.height;
-    buf.width=Math.ceil(stage.width/PIX);
-    buf.height=Math.ceil(stage.height/PIX);
-  }
-  window.addEventListener('resize',resize,{passive:true}); resize();
-
-  // --------- Farben ----------
+  // Farben
   const COLORS={ white:'#FFFFFF', red:'#E6432E', yellow:'#F4D21F', blue:'#1A3D9A', black:'#111111' };
   const PALETTE=[COLORS.white, COLORS.red, COLORS.yellow, COLORS.blue];
-  const pickColor=()=>{
-    const r=Math.random();
-    return r<.64?COLORS.white : r<.80?COLORS.red : r<.92?COLORS.yellow : COLORS.blue;
-  };
-  const otherColor=(base)=>{
-    const opts=PALETTE.filter(c=>c!==base);
+  const pickColor = () => { const r=Math.random(); return r<.64?COLORS.white : r<.80?COLORS.red : r<.92?COLORS.yellow : COLORS.blue; };
+  const otherColor = base => {
+    const opts = PALETTE.filter(c=>c!==base);
     return opts[(Math.random()*opts.length)|0];
   };
 
-  // --------- Layout & Motion ----------
+  // Layout-Arrays
   let vLines,hLines,vCur,vTarget,hCur,hTarget,cells;
   const MIN_GAP=.08, STEP=.04, COUPLE=.55;
   const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
 
+  // Text/Name als Gruppen in einer Zeile
+  const WORD='alexhatchl';
+  let textRow = 0;           // <-- früh deklariert
+  let groups  = [];          // <-- früh deklariert
+  let textColors = [];       // <-- früh deklariert
+
+  /* ========= Helpers ========= */
+  function resize(){
+    const W = Math.max(2, Math.floor(window.innerWidth));
+    const H = Math.max(2, Math.floor(window.innerHeight));
+
+    stage.width = W;  stage.height = H;
+    ui.width    = W;  ui.height    = H;
+
+    buf.width  = Math.max(2, Math.ceil(W / PIX));
+    buf.height = Math.max(2, Math.ceil(H / PIX));
+
+    // Sofort-Testbild, damit garantiert etwas zu sehen ist
+    btx.fillStyle = '#F6F6F6'; btx.fillRect(0,0,buf.width,buf.height);
+    btx.fillStyle = '#ff3b30'; btx.fillRect(6,6,Math.min(80,buf.width-12),12);
+    stx.clearRect(0,0,W,H);
+    stx.drawImage(buf,0,0,buf.width,buf.height,0,0,W,H);
+    utx.clearRect(0,0,W,H);
+  }
+  window.addEventListener('resize', resize, {passive:true});
+  resize();
+
   function seed(){
     const nV=3+(Math.random()*3|0), nH=3+(Math.random()*3|0);
-    const rand=n=>{const s=new Set();while(s.size<n)s.add(Math.round((0.12+Math.random()*0.76)*1000)/1000);return[...s].sort((a,b)=>a-b)};
+    const rand=n=>{const s=new Set(); while(s.size<n) s.add(Math.round((0.12+Math.random()*0.76)*1000)/1000); return [...s].sort((a,b)=>a-b);};
     vLines=[0,...rand(nV),1];
     hLines=[0,...rand(nH),1];
     vCur=vLines.slice(); vTarget=vLines.slice();
     hCur=hLines.slice(); hTarget=hLines.slice();
+
     cells=[];
     for(let j=0;j<hLines.length-1;j++){
       const row=[]; for(let i=0;i<vLines.length-1;i++) row.push(pickColor());
       cells.push(row);
     }
-    bindTextRow(true); // neu binden + Textfarben setzen
+    bindTextRow(true); // Text-Reihe bestimmen + Textfarben initial setzen
   }
-  seed();
 
   function nudge(target,index,dir){
     const i=index, L=i-1, R=i+1, step=dir*STEP;
-    const minX = target[L]+MIN_GAP, maxX = target[R]-MIN_GAP;
-    target[i] = clamp(target[i]+step, minX, maxX);
+    const minX=target[L]+MIN_GAP, maxX=target[R]-MIN_GAP;
+    target[i]=clamp(target[i]+step,minX,maxX);
     if(L>0){
       const lmin=target[L-1]+MIN_GAP, lmax=target[i]-MIN_GAP;
-      target[L] = clamp(target[L]+step*COUPLE, lmin, lmax);
+      target[L]=clamp(target[L]+step*COUPLE,lmin,lmax);
     }
     if(R<target.length-1){
       const rmin=target[i]+MIN_GAP, rmax=target[R+1]-MIN_GAP;
-      target[R] = clamp(target[R]+step*COUPLE, rmin, rmax);
+      target[R]=clamp(target[R]+step*COUPLE,rmin,rmax);
     }
   }
 
   function recolor(){
-    // Farben neu, Textfarben bleiben pro Zelle konsistent → kein Blinken
     for(let j=0;j<cells.length;j++){
       for(let i=0;i<cells[j].length;i++){
-        const old = cells[j][i];
-        let nxt = pickColor();
-        // vermeiden, dass Farbe gleich bleibt (mehr Variation)
-        if(nxt===old) nxt = pickColor();
+        const old=cells[j][i];
+        let nxt=pickColor(); if(nxt===old) nxt=pickColor();
         cells[j][i]=nxt;
-        // wenn sich Hintergrundfarbe in der Textreihe ändert → Textfarbe neu wählen (aber fix)
         if(j===textRow){
           textColors[i] = (textColors[i] && textColors[i]!==nxt) ? textColors[i] : pickOtherThan(nxt);
         }
       }
     }
   }
+  const pickOtherThan = bg => {
+    const opts=PALETTE.filter(c=>c!==bg);
+    return opts[(Math.random()*opts.length)|0];
+  };
 
   function beat(){
     if(Math.random()<.5){
@@ -178,45 +198,43 @@
       if(hTarget.length>2) nudge(hTarget, 1+(Math.random()*(hTarget.length-2)|0), Math.random()<.5?-1:1);
     }
     if(Math.random()<.18) recolor();
-    if(Math.random()<.9) mutateGroups(); // Gruppen ändern (kein Blinken)
+    if(Math.random()<.9) mutateGroups();
   }
 
   const lerp=(cur,tgt,k)=>{ for(let i=0;i<cur.length;i++) cur[i]+= (tgt[i]-cur[i])*k; };
 
-  // --------- Text (eine Zeile, Gruppen) ----------
-  const WORD='alexhatchl';
-  let textRow=0, groups=[], textColors=[];
+  /* ========= Text/Groups ========= */
   function bindTextRow(resetColors=false){
     const rows=hLines.length-1;
-    textRow = Math.max(0, Math.min(rows-1, (rows/2)|0)); // mittlere Zeile
+    textRow = Math.max(0, Math.min(rows-1, (rows/2)|0)); // mittlere Reihe
     groups = WORD.split('');
     fitGroupsToCols();
     if(resetColors){
       const cols=vLines.length-1;
-      textColors = new Array(cols);
+      textColors=new Array(cols);
       for(let i=0;i<cols;i++){
-        const bg = cells[textRow][i];
-        textColors[i] = pickOtherThan(bg);
+        const bg=cells[textRow][i];
+        textColors[i]=pickOtherThan(bg);
       }
     }
   }
-  function pickOtherThan(bg){
-    const opts=PALETTE.filter(c=>c!==bg);
-    return opts[(Math.random()*opts.length)|0];
-  }
+
   function fitGroupsToCols(){
     const cols=vLines.length-1;
+    // zu viele → mergen
     while(groups.length>cols){
-      const i = 1 + (Math.random()*(groups.length-1)|0);
+      const i=1+(Math.random()*(groups.length-1)|0);
       groups[i-1]+=groups[i]; groups.splice(i,1);
     }
+    // zu wenige → splitten
     while(groups.length<cols){
-      const idx = groups.findIndex(g=>g.length>1);
+      const idx=groups.findIndex(g=>g.length>1);
       if(idx===-1){ groups.push(''); break; }
       const g=groups[idx], cut=1+(Math.random()*(g.length-1)|0);
       groups.splice(idx,1,g.slice(0,cut),g.slice(cut));
     }
   }
+
   function mutateGroups(){
     const cols=vLines.length-1;
     if(groups.length<=1 || Math.random()<.5){
@@ -227,25 +245,26 @@
         groups.splice(i,1,g.slice(0,cut),g.slice(cut));
       }
     }else if(groups.length>=2){
-      const i = 1 + (Math.random()*(groups.length-1)|0);
+      const i = 1+(Math.random()*(groups.length-1)|0);
       groups[i-1]+=groups[i]; groups.splice(i,1);
     }
     fitGroupsToCols();
-    // Textfarben-Array ggf. auf neue Spaltenzahl trimmen/erweitern
+    // Textfarben ggf. auf neue Spaltenzahl mappen
     const cols2=vLines.length-1;
     if(textColors.length!==cols2){
       const next=new Array(cols2);
       for(let i=0;i<cols2;i++){
-        const bg = cells[textRow][i];
+        const bg=cells[textRow][i];
         next[i] = textColors[i] && textColors[i]!==bg ? textColors[i] : pickOtherThan(bg);
       }
       textColors=next;
     }
   }
 
-  // --------- Zeichnen ----------
+  /* ========= Zeichnen ========= */
   function draw(){
     const W=buf.width,H=buf.height;
+
     // Zellen
     btx.fillStyle='#F6F6F6'; btx.fillRect(0,0,W,H);
     for(let j=0;j<hCur.length-1;j++){
@@ -267,49 +286,60 @@
     stx.clearRect(0,0,stage.width,stage.height);
     stx.drawImage(buf,0,0,W,H,0,0,stage.width,stage.height);
 
-    // Glatte Buchstaben (eine Zeile, zentriert in der Zeile; keine Blinkfarbe)
+    // Buchstaben in der Textreihe, kleine Größe, farblich != Kasten
     utx.clearRect(0,0,ui.width,ui.height);
     const cols=vCur.length-1;
     const ry0=Math.round(hCur[textRow]*H), ry1=Math.round(hCur[textRow+1]*H);
-    const y0=Math.round(ry0 * (stage.height / H));
-    const y1=Math.round(ry1 * (stage.height / H));
+    const y0=Math.round(ry0*(stage.height/H));
+    const y1=Math.round(ry1*(stage.height/H));
     const cy=(y0+y1)>>1;
 
-    const fontPx = Math.max(12, Math.round(Math.min(stage.width,stage.height) * 0.02)); // ~klein
-    utx.font = `600 ${fontPx}px ${FONTS[fontIndex]}`;
+    const fontPx=Math.max(12, Math.round(Math.min(stage.width,stage.height)*0.02));
+    utx.font=`600 ${fontPx}px ${FONTS[fontIndex]}`;
     utx.textAlign='center'; utx.textBaseline='middle';
 
     for(let i=0;i<cols;i++){
       const g=groups[i]||''; if(!g) continue;
       const x0b=Math.round(vCur[i]*W), x1b=Math.round(vCur[i+1]*W);
-      const x0s=Math.round(x0b * (stage.width / W));
-      const x1s=Math.round(x1b * (stage.width / W));
+      const x0s=Math.round(x0b*(stage.width/W));
+      const x1s=Math.round(x1b*(stage.width/W));
       const cx=(x0s+x1s)>>1;
-      // feste, von der Zellenfarbe verschiedene Textfarbe
+
       const bg=cells[textRow][i];
       let tc=textColors[i];
-      if(!tc || tc===bg){ tc = textColors[i] = otherColor(bg); }
-      utx.fillStyle = tc;
+      if(!tc || tc===bg) tc = textColors[i]=otherColor(bg);
+
+      utx.fillStyle=tc;
       utx.fillText(g, cx, cy);
     }
   }
 
-  // --------- Loop mit Beats ----------
+  /* ========= Loop ========= */
   let t0=performance.now(), nextA=0, nextB=0;
   function loop(now){
-    if(!paused){
-      const t=(now-t0)/1000;
-      lerp(vCur,vTarget,.14);
-      lerp(hCur,hTarget,.14);
-      if(t>=nextA){ beat(); nextA = t + (0.85 + (Math.random()*0.16 - 0.08)); }
-      if(t>=nextB){ beat(); nextB = t + (1.35 + (Math.random()*0.22 - 0.11)); }
-      draw();
+    try{
+      if(!paused){
+        const t=(now-t0)/1000;
+        lerp(vCur,vTarget,.14);
+        lerp(hCur,hTarget,.14);
+        if(t>=nextA){ beat(); nextA = t + (0.85 + (Math.random()*0.16 - 0.08)); }
+        if(t>=nextB){ beat(); nextB = t + (1.35 + (Math.random()*0.22 - 0.11)); }
+        draw();
+      }
+    }catch(err){
+      console.error('loop error:', err);
+      btx.fillStyle='#EEE'; btx.fillRect(0,0,buf.width,buf.height);
+      stx.drawImage(buf,0,0,buf.width,buf.height,0,0,stage.width,stage.height);
     }
     requestAnimationFrame(loop);
   }
+
+  /* ========= Init ========= */
+  seed();
+  draw();                  // sofort sichtbarer Frame
   requestAnimationFrame(loop);
 
-  // --------- Keyboard ----------
+  /* ========= Keyboard ========= */
   window.addEventListener('keydown', e=>{
     const k=e.key.toLowerCase();
     if(k===' '){ paused=!paused; }
@@ -320,33 +350,32 @@
     if(k==='h'){ alert('Keys: Space, R, C, B, F • Arrows for slides'); }
   });
 
-  // --------- Legenden-Logik ----------
-  const legKeys = document.getElementById('legend-keys');
+  /* ========= Legenden-Logik ========= */
+  const legKeys   = document.getElementById('legend-keys');
   const legArrows = document.getElementById('legend-arrows');
 
   function onHash(){
     const h=location.hash||'';
-    const isStart = (h==='' || /slide=1\b/i.test(h));
-    legKeys.hidden = !isStart; // nur auf Startseite anzeigen
+    const isStart=(h==='' || /slide=1\b/i.test(h));
+    if(legKeys) legKeys.hidden=!isStart;   // nur Start
   }
   window.addEventListener('hashchange', onHash);
   onHash();
 
-  // Transparenz: 15% idle, 45% bei Mausaktivität/Hover
+  // Transparenzsteuerung: 15% idle, 45% aktiv
   let idleTimer=null;
-  const touchActive = ()=>{ 
-    [legKeys,legArrows].forEach(el=> el && el.classList.add('active'));
+  function setActive(a){
+    [legKeys,legArrows].forEach(el=>{ if(el){ el.classList.toggle('active', a); }});
+  }
+  function wake(){
+    setActive(true);
     clearTimeout(idleTimer);
-    idleTimer=setTimeout(()=>{
-      [legKeys,legArrows].forEach(el=> el && el.classList.remove('active'));
-    }, 2000);
-  };
-  // bei Mausbewegung / Touch
+    idleTimer=setTimeout(()=>setActive(false),2000);
+  }
   ['mousemove','touchstart','touchmove'].forEach(evt=>{
-    window.addEventListener(evt, touchActive, {passive:true});
+    window.addEventListener(evt,wake,{passive:true});
   });
-  // initial kurz aktiv anzeigen
-  touchActive();
+  wake(); // initial kurz aktiv
 })();
 </script>
 </body>
